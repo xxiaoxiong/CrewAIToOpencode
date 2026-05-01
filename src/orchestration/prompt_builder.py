@@ -76,6 +76,7 @@ def build_retry_prompt(
     review_result: dict,
     iteration: int,
     tester_analysis: dict[str, Any] | None = None,
+    validator_result: dict[str, Any] | None = None,
 ) -> str:
     test = quality_result.get("test", {})
     lint = quality_result.get("lint", {})
@@ -91,6 +92,7 @@ def build_retry_prompt(
         "file_policy": file_policy,
         "bad_patterns": bad_patterns,
         "tester_analysis": tester_analysis or {},
+        "validator_result": validator_result or {},
         "review_passed": review_result.get("passed"),
         "review_blocking_issues": blocking,
         "review_retry_instruction": review_result.get("retry_instruction", ""),
@@ -123,6 +125,9 @@ stderr:
 
 [Tester Analyst]
 {json.dumps(tester_analysis or {}, ensure_ascii=False, indent=2)}
+
+[Validation Reviewer]
+{json.dumps(validator_result or {}, ensure_ascii=False, indent=2)}
 
 [Reviewer Blocking Issues]
 {json.dumps(blocking, ensure_ascii=False, indent=2)}

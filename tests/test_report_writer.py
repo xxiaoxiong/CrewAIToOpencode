@@ -27,6 +27,7 @@ def test_report_contains_all_v03_stage_results(tmp_path, monkeypatch):
             "bad_patterns": {"passed": True, "hits": []},
         },
         "tester": {"passed": True},
+        "validator": {"passed": True, "score": 90, "summary": "validated", "blocking_issues": []},
         "review": {"passed": True, "score": 90, "blocking_issues": []},
         "reporter": {"summary": "done", "validation_summary": "ok"},
         "retry_history": [{"iteration": 2}],
@@ -43,6 +44,7 @@ def test_report_contains_all_v03_stage_results(tmp_path, monkeypatch):
     assert "## OpenCode Build" in markdown
     assert "## Quality Gate" in markdown
     assert "## CrewAI Tester" in markdown
+    assert "## LLM Task Validator" in markdown
     assert "## CrewAI Reviewer" in markdown
     assert "## CrewAI Reporter" in markdown
     assert "## Retry History" in markdown

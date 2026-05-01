@@ -67,7 +67,7 @@ def test_flow_runner_crewai_disabled_keeps_v01_path(monkeypatch):
     monkeypatch.setattr(
         flow_runner,
         "run_quality_gate",
-        lambda config: {
+        lambda *args, **kwargs: {
             "passed": True,
             "changed_files": ["README.md"],
             "test": {"enabled": True, "passed": True},
@@ -83,6 +83,7 @@ def test_flow_runner_crewai_disabled_keeps_v01_path(monkeypatch):
         "review_change",
         lambda task, quality: {"passed": True, "score": 85, "blocking_issues": []},
     )
+    monkeypatch.setattr(flow_runner, "opencode_validate", lambda *args: {"passed": True, "score": 90})
 
     report = flow_runner.run_dev_task("demo-project", "task")
 
@@ -126,7 +127,7 @@ def test_flow_runner_crewai_enabled_adds_plan_and_tester_retry(monkeypatch):
     )
     calls = {"quality": 0}
 
-    def fake_quality(config):
+    def fake_quality(*args, **kwargs):
         calls["quality"] += 1
         passed = calls["quality"] >= 2
         return {
@@ -166,6 +167,7 @@ def test_flow_runner_crewai_enabled_adds_plan_and_tester_retry(monkeypatch):
         "summarize_delivery",
         lambda report, config: {"passed": True, "summary": "done", "validation_summary": "ok"},
     )
+    monkeypatch.setattr(flow_runner, "opencode_validate", lambda *args: {"passed": True, "score": 90})
 
     report = flow_runner.run_dev_task("demo-project", "task")
 

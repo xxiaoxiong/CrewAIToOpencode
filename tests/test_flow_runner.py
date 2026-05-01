@@ -41,7 +41,7 @@ def test_run_dev_task_retries_until_pass(monkeypatch):
 
     calls = {"count": 0}
 
-    def fake_quality(config):
+    def fake_quality(*args, **kwargs):
         calls["count"] += 1
         return {
             "passed": calls["count"] >= 2,
@@ -67,6 +67,7 @@ def test_run_dev_task_retries_until_pass(monkeypatch):
             "raw": "fake",
         },
     )
+    monkeypatch.setattr(flow_runner, "opencode_validate", lambda *args: {"passed": True, "score": 90})
 
     report = flow_runner.run_dev_task("demo-project", "task", max_iterations=3)
 

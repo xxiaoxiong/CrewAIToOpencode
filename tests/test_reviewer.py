@@ -81,3 +81,4 @@ def test_review_change_file_policy_and_bad_patterns_are_hard_fails(monkeypatch):
     assert result["passed"] is False
     assert "File policy violations cannot be overridden by CrewAI." in result["blocking_issues"]
     assert "Dangerous pattern hits cannot be overridden by CrewAI." in result["blocking_issues"]
+

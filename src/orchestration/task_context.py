@@ -16,6 +16,7 @@ class TaskContext:
     build_result: dict[str, Any] = field(default_factory=dict)
     quality_result: dict[str, Any] = field(default_factory=dict)
     tester_result: dict[str, Any] = field(default_factory=dict)
+    validator_result: dict[str, Any] = field(default_factory=dict)
     reviewer_result: dict[str, Any] = field(default_factory=dict)
     reporter_result: dict[str, Any] = field(default_factory=dict)
     iteration: int = 0

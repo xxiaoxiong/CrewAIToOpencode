@@ -31,6 +31,7 @@ def _failure_reasons(report: dict) -> list[str]:
     reasons: list[str] = []
     quality = report.get("quality", {})
     review = report.get("review", {})
+    validator = report.get("validator", {})
     if report.get("error"):
         reasons.append(str(report["error"]))
     if not quality.get("changed_files"):
@@ -43,6 +44,8 @@ def _failure_reasons(report: dict) -> list[str]:
         reasons.append("File policy failed.")
     if quality.get("bad_patterns", {}).get("passed") is False:
         reasons.append("Dangerous pattern scan failed.")
+    for issue in validator.get("blocking_issues", []) or []:
+        reasons.append(str(issue))
     for issue in review.get("blocking_issues", []) or []:
         reasons.append(str(issue))
     return reasons
@@ -61,6 +64,7 @@ def write_markdown_report(report: dict) -> str:
     opencode_plan = report.get("opencode_plan", {})
     build = report.get("build", {})
     tester = report.get("tester", {})
+    validator = report.get("validator", {})
     reporter = report.get("reporter", {})
     retry_history = report.get("retry_history", [])
     test = quality.get("test", {})
@@ -116,6 +120,14 @@ def write_markdown_report(report: dict) -> str:
         f"- Failure type: {tester.get('failure_type', '')}",
         f"- Root cause: {tester.get('root_cause_summary', '')}",
         f"- Retry instruction: {tester.get('retry_instruction', '')}",
+        "",
+        "## LLM Task Validator",
+        "",
+        f"- Passed: {_ok(validator.get('passed')) if validator else 'N/A'}",
+        f"- Score: {validator.get('score', '')}",
+        f"- Summary: {validator.get('summary', '')}",
+        f"- Blocking issues: `{json.dumps(validator.get('blocking_issues', []), ensure_ascii=False)}`",
+        f"- Retry instruction: {validator.get('retry_instruction', '')}",
         "",
         "## Lint Result",
         "",

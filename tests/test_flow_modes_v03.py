@@ -70,7 +70,7 @@ def _patch_common(monkeypatch, config):
     monkeypatch.setattr(
         flow_runner,
         "run_quality_gate",
-        lambda config: {
+        lambda *args, **kwargs: {
             "passed": True,
             "changed_files": ["README.md"],
             "test": {"enabled": True, "passed": True},
@@ -86,6 +86,7 @@ def _patch_common(monkeypatch, config):
         "review_change",
         lambda task, quality: {"passed": True, "score": 85, "blocking_issues": []},
     )
+    monkeypatch.setattr(flow_runner, "opencode_validate", lambda *args: {"passed": True, "score": 90})
     monkeypatch.setattr(flow_runner, "summarize_delivery", lambda report, config: {"passed": True})
 
 
@@ -138,3 +139,40 @@ def test_flow_runner_full_mode_executes_explore_architect_plan(monkeypatch):
     assert report["explore"]["summary"] == "explore"
     assert report["architect_plan"]["summary"] == "architect"
     assert report["opencode_plan"]["summary"] == "plan"
+
+
+def test_flow_runner_repairs_when_validator_fails(monkeypatch):
+    calls = {"build": 0, "repair": 0, "validate": 0}
+    config = _config()
+    config["task_pipeline"]["max_iterations"] = 2
+    _patch_common(monkeypatch, config)
+    monkeypatch.setattr(flow_runner, "opencode_explore", lambda *args: {})
+    monkeypatch.setattr(flow_runner, "build_architect_plan", lambda *args: {})
+    monkeypatch.setattr(flow_runner, "opencode_plan_task", lambda *args: {})
+    monkeypatch.setattr(
+        flow_runner,
+        "opencode_build",
+        lambda *args: calls.__setitem__("build", calls["build"] + 1) or {"ok": True},
+    )
+    monkeypatch.setattr(
+        flow_runner,
+        "opencode_repair",
+        lambda *args: calls.__setitem__("repair", calls["repair"] + 1) or {"ok": True},
+    )
+
+    def fake_validate(*args):
+        calls["validate"] += 1
+        return (
+            {"passed": False, "blocking_issues": ["not enough"], "retry_instruction": "expand"}
+            if calls["validate"] == 1
+            else {"passed": True, "blocking_issues": []}
+        )
+
+    monkeypatch.setattr(flow_runner, "opencode_validate", fake_validate)
+
+    report = flow_runner.run_dev_task("demo-project", "task", mode="full")
+
+    assert report["passed"] is True
+    assert calls["build"] == 1
+    assert calls["repair"] == 1
+    assert "expand" in report["retry_history"][0]["prompt"]

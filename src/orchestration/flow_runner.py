@@ -12,6 +12,7 @@ from src.opencode.multi_agent_runner import build as opencode_build
 from src.opencode.multi_agent_runner import explore as opencode_explore
 from src.opencode.multi_agent_runner import plan as opencode_plan_task
 from src.opencode.multi_agent_runner import repair as opencode_repair
+from src.opencode.multi_agent_runner import validate as opencode_validate
 from src.orchestration.prompt_builder import build_initial_prompt, build_retry_prompt
 from src.orchestration.report_writer import write_json_report, write_markdown_report
 from src.orchestration.task_context import TaskContext
@@ -77,6 +78,7 @@ def _pipeline_for_config(project_config: dict[str, Any], mode: str | None) -> di
             "opencode_plan_enabled": False,
             "build_enabled": True,
             "tester_enabled": True,
+            "validator_enabled": True,
             "reviewer_enabled": True,
             "reporter_enabled": True,
             "max_iterations": project_config.get("max_iterations", 3),
@@ -88,6 +90,7 @@ def _pipeline_for_config(project_config: dict[str, Any], mode: str | None) -> di
         "opencode_plan_enabled": False,
         "build_enabled": True,
         "tester_enabled": False,
+        "validator_enabled": True,
         "reviewer_enabled": True,
         "reporter_enabled": False,
         "max_iterations": project_config.get("max_iterations", 3),
@@ -123,6 +126,7 @@ def run_dev_task(
         "build": {},
         "quality": {},
         "tester": {},
+        "validator": {},
         "reviewer": {},
         "review": {},
         "plan": {},
@@ -176,6 +180,7 @@ def run_dev_task(
         last_quality: dict[str, Any] = {}
         last_review: dict[str, Any] = {}
         last_tester: dict[str, Any] = {}
+        last_validator: dict[str, Any] = {}
 
         for iteration in range(1, limit + 1):
             context.iteration = iteration
@@ -197,7 +202,7 @@ def run_dev_task(
                 context.build_result = send_result
                 action = "build"
             else:
-                prompt = build_retry_prompt(task_text, last_quality, last_review, iteration, last_tester)
+                prompt = build_retry_prompt(task_text, last_quality, last_review, iteration, last_tester, last_validator)
                 send_result = opencode_repair(session_id, prompt, project_config)
                 report["retry_history"].append({"iteration": iteration, "prompt": prompt, "result": send_result})
                 action = "repair"
@@ -209,7 +214,7 @@ def run_dev_task(
             except Exception as exc:
                 opencode_diff = {"error": str(exc)}
 
-            quality = run_quality_gate(project_config)
+            quality = run_quality_gate(project_config, task_text)
             context.quality_result = quality
             _emit(progress, f"quality gate: {'PASS' if quality.get('passed') else 'FAIL'}")
 
@@ -221,6 +226,14 @@ def run_dev_task(
             context.tester_result = tester
             if tester:
                 _emit(progress, f"tester analyst: {'PASS' if tester.get('passed') else 'ANALYZED'}")
+
+            validator = (
+                opencode_validate(session_id, task_text, quality, project_config)
+                if pipeline.get("validator_enabled", True)
+                else {"passed": True, "summary": "validator disabled", "blocking_issues": []}
+            )
+            context.validator_result = validator
+            _emit(progress, f"validator: {'PASS' if validator.get('passed') else 'FAIL'}")
 
             review = (
                 (
@@ -234,7 +247,7 @@ def run_dev_task(
             context.reviewer_result = review
             _emit(progress, f"reviewer: {'PASS' if review.get('passed') else 'FAIL'}")
 
-            iteration_passed = bool(quality.get("passed") and review.get("passed"))
+            iteration_passed = bool(quality.get("passed") and validator.get("passed") and review.get("passed"))
             context.passed = iteration_passed
             iteration_report = {
                 "iteration": iteration,
@@ -243,6 +256,7 @@ def run_dev_task(
                 "opencode_diff": opencode_diff,
                 "quality_passed": quality.get("passed"),
                 "tester": tester,
+                "validator": validator,
                 "review_passed": review.get("passed"),
                 "passed": iteration_passed,
             }
@@ -250,11 +264,13 @@ def run_dev_task(
             report["iterations_used"] = iteration
             report["quality"] = quality
             report["tester"] = tester
+            report["validator"] = validator
             report["reviewer"] = review
             report["review"] = review
 
             last_quality = quality
             last_tester = tester
+            last_validator = validator
             last_review = review
 
             if iteration_passed:
