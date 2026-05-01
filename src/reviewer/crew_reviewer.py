@@ -4,6 +4,8 @@ import json
 import os
 from typing import Any
 
+from src.agents.reviewer_agent import run_semantic_review
+
 
 def _default_result(raw: str = "") -> dict[str, Any]:
     return {
@@ -116,6 +118,10 @@ def _heuristic_review(quality_result: dict) -> dict[str, Any]:
         blocking.append("File policy violations were detected.")
     if quality_result.get("bad_patterns", {}).get("passed") is False:
         blocking.append("Dangerous patterns were detected in the diff.")
+    if quality_result.get("test", {}).get("passed") is False:
+        blocking.append("Test command failed.")
+    if quality_result.get("lint", {}).get("passed") is False:
+        blocking.append("Lint command failed.")
 
     result["blocking_issues"] = blocking
     result["passed"] = not blocking
@@ -124,15 +130,58 @@ def _heuristic_review(quality_result: dict) -> dict[str, Any]:
     return result
 
 
-def review_change(task_text: str, quality_result: dict) -> dict[str, Any]:
+def _hard_fail_reasons(quality_result: dict) -> list[str]:
+    reasons: list[str] = []
+    if quality_result.get("file_policy", {}).get("passed") is False:
+        reasons.append("File policy violations cannot be overridden by CrewAI.")
+    if quality_result.get("bad_patterns", {}).get("passed") is False:
+        reasons.append("Dangerous pattern hits cannot be overridden by CrewAI.")
+    if quality_result.get("test", {}).get("passed") is False:
+        reasons.append("Test failures cannot be overridden by CrewAI.")
+    return reasons
+
+
+def _merge_semantic_review(base: dict[str, Any], semantic: dict[str, Any]) -> dict[str, Any]:
+    result = dict(base)
+    blocking = list(result.get("blocking_issues", []) or [])
+    non_blocking = list(result.get("non_blocking_issues", []) or [])
+    blocking.extend(str(item) for item in semantic.get("blocking_issues", []) or [])
+    non_blocking.extend(str(item) for item in semantic.get("non_blocking_issues", []) or [])
+    result["blocking_issues"] = blocking
+    result["non_blocking_issues"] = non_blocking
+    result["passed"] = bool(result.get("passed")) and bool(semantic.get("passed"))
+    result["score"] = min(int(result.get("score", 0)), int(semantic.get("score", 0) or 0))
+    if semantic.get("retry_instruction"):
+        result["retry_instruction"] = semantic["retry_instruction"]
+    result["raw"] = semantic.get("raw", result.get("raw", ""))
+    return result
+
+
+def review_change(task_text: str, quality_result: dict, project_config: dict | None = None) -> dict[str, Any]:
+    heuristic = _heuristic_review(quality_result)
+    hard_fail_reasons = _hard_fail_reasons(quality_result)
+    if hard_fail_reasons:
+        heuristic["blocking_issues"] = list(dict.fromkeys([*heuristic.get("blocking_issues", []), *hard_fail_reasons]))
+        heuristic["passed"] = False
+        heuristic["score"] = 0
+        return heuristic
+
     if os.getenv("REVIEWER_DISABLE_LLM", "").lower() in {"1", "true", "yes"}:
-        return _heuristic_review(quality_result)
+        return heuristic
 
-    prompt = _build_review_prompt(task_text, quality_result)
-    raw = _review_with_crewai(prompt)
-    if raw:
-        parsed = _coerce_review(raw)
-        if parsed.get("passed") or parsed.get("blocking_issues"):
-            return parsed
+    crewai_config = (project_config or {}).get("crewai", {}) or {}
+    if not crewai_config.get("enabled") or not crewai_config.get("reviewer_enabled", True):
+        return heuristic
 
-    return _heuristic_review(quality_result)
+    try:
+        semantic = run_semantic_review(task_text, quality_result, project_config or {})
+    except Exception as exc:
+        semantic = {
+            "passed": True,
+            "score": heuristic.get("score", 85),
+            "blocking_issues": [],
+            "non_blocking_issues": [f"CrewAI semantic reviewer unavailable: {exc}"],
+            "retry_instruction": "",
+            "raw": "semantic reviewer fallback",
+        }
+    return _merge_semantic_review(heuristic, semantic)

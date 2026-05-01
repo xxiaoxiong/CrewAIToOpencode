@@ -3,6 +3,9 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from src.agents.architect_agent import build_architect_plan
+from src.agents.reporter_agent import summarize_delivery
+from src.agents.tester_agent import analyze_test_failure
 from src.config_loader import get_project_config
 from src.opencode.client import OpenCodeClient
 from src.orchestration.prompt_builder import build_initial_prompt, build_retry_prompt
@@ -50,6 +53,15 @@ def _write_reports(report: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
+def _crewai_enabled(project_config: dict[str, Any], key: str | None = None) -> bool:
+    crewai_config = project_config.get("crewai", {}) or {}
+    if not crewai_config.get("enabled", False):
+        return False
+    if key is None:
+        return True
+    return bool(crewai_config.get(key, True))
+
+
 def run_dev_task(
     project_id: str,
     task_text: str,
@@ -69,6 +81,9 @@ def run_dev_task(
         "max_iterations": limit,
         "quality": {},
         "review": {},
+        "plan": {},
+        "tester": {},
+        "reporter": {},
         "iterations": [],
     }
 
@@ -85,15 +100,27 @@ def run_dev_task(
         report["session_id"] = session_id
         _emit(progress, f"session_id: {session_id}")
 
+        plan_result: dict[str, Any] = {}
+        if _crewai_enabled(project_config, "planning_enabled"):
+            repo_context = {
+                "health": health,
+                "path": current_path,
+                "vcs": vcs,
+            }
+            plan_result = build_architect_plan(task_text, project_config, repo_context)
+            report["plan"] = plan_result
+            _emit(progress, f"architect: {'PASS' if plan_result.get('passed') else 'FALLBACK/FAIL'}")
+
         last_quality: dict[str, Any] = {}
         last_review: dict[str, Any] = {}
+        last_tester: dict[str, Any] = {}
 
         for iteration in range(1, limit + 1):
             _emit(progress, f"iteration {iteration}/{limit}: sending task to OpenCode")
             prompt = (
-                build_initial_prompt(task_text, project_config)
+                build_initial_prompt(task_text, project_config, plan_result if plan_result else None)
                 if iteration == 1
-                else build_retry_prompt(task_text, last_quality, last_review, iteration)
+                else build_retry_prompt(task_text, last_quality, last_review, iteration, last_tester)
             )
 
             send_result = client.send_message(session_id, prompt, project_config.get("opencode_agent", "build"))
@@ -108,8 +135,20 @@ def run_dev_task(
             quality = run_quality_gate(project_config)
             _emit(progress, f"quality gate: {'PASS' if quality.get('passed') else 'FAIL'}")
 
+            tester = (
+                analyze_test_failure(task_text, quality, project_config)
+                if _crewai_enabled(project_config, "tester_analysis_enabled")
+                else {}
+            )
+            if tester:
+                _emit(progress, f"tester analyst: {'PASS' if tester.get('passed') else 'ANALYZED'}")
+
             review = (
-                review_change(task_text, quality)
+                (
+                    review_change(task_text, quality, project_config)
+                    if _crewai_enabled(project_config, "reviewer_enabled")
+                    else review_change(task_text, quality)
+                )
                 if project_config.get("reviewer_enabled", True)
                 else _disabled_review()
             )
@@ -121,19 +160,26 @@ def run_dev_task(
                 "send_result": send_result,
                 "opencode_diff": opencode_diff,
                 "quality_passed": quality.get("passed"),
+                "tester": tester,
                 "review_passed": review.get("passed"),
                 "passed": iteration_passed,
             }
             report["iterations"].append(iteration_report)
             report["iterations_used"] = iteration
             report["quality"] = quality
+            report["tester"] = tester
             report["review"] = review
 
             last_quality = quality
+            last_tester = tester
             last_review = review
 
             if iteration_passed:
                 report["passed"] = True
+                if _crewai_enabled(project_config, "reporter_enabled"):
+                    reporter = summarize_delivery(report, project_config)
+                    report["reporter"] = reporter
+                    _emit(progress, f"reporter: {'PASS' if reporter.get('passed') else 'FALLBACK/FAIL'}")
                 _emit(progress, "task passed")
                 break
 

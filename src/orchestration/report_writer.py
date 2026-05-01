@@ -55,6 +55,9 @@ def write_markdown_report(report: dict) -> str:
 
     quality = report.get("quality", {})
     review = report.get("review", {})
+    plan = report.get("plan", {})
+    tester = report.get("tester", {})
+    reporter = report.get("reporter", {})
     test = quality.get("test", {})
     lint = quality.get("lint", {})
     reasons = _failure_reasons(report)
@@ -69,6 +72,12 @@ def write_markdown_report(report: dict) -> str:
         f"- Success: {_ok(report.get('passed'))}",
         f"- Iterations used: {report.get('iterations_used', 0)} / {report.get('max_iterations', 0)}",
         "",
+        "## Architect Plan",
+        "",
+        f"- Summary: {plan.get('summary', '')}",
+        f"- Execution plan: `{json.dumps(plan.get('execution_plan', []), ensure_ascii=False)}`",
+        f"- OpenCode instruction: {plan.get('opencode_instruction', '')}",
+        "",
         "## Changed Files",
         "",
         *([f"- {item}" for item in changed_files] or ["- None"]),
@@ -78,6 +87,13 @@ def write_markdown_report(report: dict) -> str:
         f"- Enabled: {test.get('enabled', False)}",
         f"- Passed: {_ok(test.get('passed'))}",
         f"- Command: `{test.get('cmd', '')}`",
+        "",
+        "## Tester Analyst",
+        "",
+        f"- Passed: {_ok(tester.get('passed')) if tester else 'N/A'}",
+        f"- Failure type: {tester.get('failure_type', '')}",
+        f"- Root cause: {tester.get('root_cause_summary', '')}",
+        f"- Retry instruction: {tester.get('retry_instruction', '')}",
         "",
         "## Lint Result",
         "",
@@ -100,6 +116,11 @@ def write_markdown_report(report: dict) -> str:
         f"- Passed: {_ok(review.get('passed'))}",
         f"- Score: {review.get('score', 0)}",
         f"- Blocking issues: `{json.dumps(review.get('blocking_issues', []), ensure_ascii=False)}`",
+        "",
+        "## Reporter",
+        "",
+        f"- Summary: {reporter.get('summary', '')}",
+        f"- Validation summary: {reporter.get('validation_summary', '')}",
         "",
         "## Failure Reasons",
         "",

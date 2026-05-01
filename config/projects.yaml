@@ -30,3 +30,25 @@ projects:
     lint_enabled: false
     test_enabled: true
     worktree_enabled: false
+
+    crewai:
+      enabled: false
+      mode: "hybrid_planning_review"
+      planning_enabled: true
+      tester_analysis_enabled: true
+      reviewer_enabled: true
+      reporter_enabled: true
+      llm:
+        model: ""
+        base_url: ""
+        api_key: ""
+        temperature: 0
+      agents:
+        architect:
+          role: "Software architect"
+        tester:
+          role: "Test failure analyst"
+        reviewer:
+          role: "Senior code reviewer"
+        reporter:
+          role: "Delivery reporter"
