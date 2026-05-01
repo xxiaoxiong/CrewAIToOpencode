@@ -62,6 +62,7 @@ def run_semantic_review(task_text: str | dict[str, Any], quality_result: dict[st
     result = parse_json_object(
         raw,
         {
+            "mode": "fallback",
             "passed": False,
             "score": 0,
             "blocking_issues": ["CrewAI reviewer output was not valid JSON."],
@@ -70,6 +71,7 @@ def run_semantic_review(task_text: str | dict[str, Any], quality_result: dict[st
             "raw": raw,
         },
     )
+    result["mode"] = "llm"
     result["passed"] = bool(result.get("passed", False))
     result["score"] = int(result.get("score", 0) or 0)
     result["blocking_issues"] = coerce_string_list(result.get("blocking_issues", []))

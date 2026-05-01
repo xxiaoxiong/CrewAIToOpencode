@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from typing import Any
 
 from src.orchestration.stage_artifacts import compact_text, sanitize_stage_value
@@ -168,3 +170,114 @@ def compact_task_contract(contract: dict[str, Any] | None) -> dict[str, Any]:
         "validation_commands": _string_list(source.get("validation_commands"), limit=10),
         "final_output_requirements": _string_list(source.get("final_output_requirements"), limit=10),
     }
+
+
+def build_llm_enhanced_task_contract(
+    task_text: str,
+    project_config: dict[str, Any],
+    repo_summary: dict[str, Any],
+    orchestrator_plan: dict[str, Any],
+    architect_plan: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    使用 LLM 和 Orchestrator 分析结果生成增强的 Task Contract。
+
+    Args:
+        task_text: 用户任务描述
+        project_config: 项目配置
+        repo_summary: 仓库摘要
+        orchestrator_plan: Orchestrator 分析结果
+        architect_plan: 架构师计划（可选）
+
+    Returns:
+        增强的 Task Contract
+    """
+    # Check if LLM is disabled
+    if os.getenv("CREWAI_DISABLE_LLM", "").lower() in {"1", "true", "yes"}:
+        return build_task_contract(task_text, project_config, repo_summary, architect_plan)
+
+    try:
+        from src.agents.llm_factory import create_llm
+        from crewai import Agent, Crew, Task
+
+        llm = create_llm(project_config)
+
+        # 构建上下文
+        context = f"Task: {task_text}\n\n"
+        context += f"Orchestrator Analysis:\n{json.dumps(orchestrator_plan, indent=2, ensure_ascii=False)}\n\n"
+        if repo_summary:
+            context += f"Repository Summary:\n{json.dumps(repo_summary, indent=2, ensure_ascii=False)}\n\n"
+        if architect_plan:
+            context += f"Architect Plan:\n{json.dumps(architect_plan, indent=2, ensure_ascii=False)}\n\n"
+
+        # 创建 Agent
+        agent = Agent(
+            role="Task Contract Specialist",
+            goal="Generate precise task contracts with accurate file lists and acceptance criteria",
+            backstory=(
+                "You are an expert at creating detailed task contracts. "
+                "You understand what files need to be created or modified, "
+                "and what acceptance criteria should be checked."
+            ),
+            llm=llm,
+            verbose=False,
+        )
+
+        # 创建任务
+        task = Task(
+            description=(
+                f"{context}"
+                "Based on the task, orchestrator analysis, repository summary, and architect plan, "
+                "generate a precise Task Contract.\n\n"
+                "Output ONLY valid JSON in this exact format:\n"
+                "{\n"
+                '  "task_type": "create_frontend_project | bugfix | refactor | test_generation | documentation | implementation",\n'
+                '  "goal": "Clear task goal",\n'
+                '  "must_create_or_modify_files": ["file1.js", "file2.tsx"],\n'
+                '  "acceptance_criteria": ["Criterion 1", "Criterion 2"],\n'
+                '  "validation_commands": ["npm test", "npm run build"]\n'
+                "}"
+            ),
+            expected_output="Valid JSON object with task contract",
+            agent=agent,
+        )
+
+        # 执行
+        crew = Crew(agents=[agent], tasks=[task], verbose=False)
+        result = crew.kickoff()
+
+        # 解析结果
+        result_text = str(result.raw) if hasattr(result, "raw") else str(result)
+        result_text = result_text.strip()
+        if "```json" in result_text:
+            result_text = result_text.split("```json")[1].split("```")[0].strip()
+        elif "```" in result_text:
+            result_text = result_text.split("```")[1].split("```")[0].strip()
+
+        parsed = json.loads(result_text)
+
+        # 合并 LLM 结果和确定性规则
+        base_contract = build_task_contract(task_text, project_config, repo_summary, architect_plan)
+
+        # 使用 LLM 增强的字段
+        enhanced_contract = {
+            "task_type": parsed.get("task_type", base_contract["task_type"]),
+            "goal": parsed.get("goal", base_contract["goal"]),
+            "must_create_or_modify_files": _dedupe(
+                parsed.get("must_create_or_modify_files", []) + base_contract["must_create_or_modify_files"],
+                limit=20
+            ),
+            "acceptance_criteria": _dedupe(
+                parsed.get("acceptance_criteria", []) + base_contract["acceptance_criteria"],
+                limit=16
+            ),
+            "denied_paths": base_contract["denied_paths"],  # 保持确定性
+            "validation_commands": parsed.get("validation_commands", base_contract["validation_commands"]),
+            "final_output_requirements": base_contract["final_output_requirements"],  # 保持确定性
+        }
+
+        return {key: enhanced_contract[key] for key in CONTRACT_KEYS}
+
+    except Exception:
+        # LLM 失败，fallback 到确定性 contract
+        return build_task_contract(task_text, project_config, repo_summary, architect_plan)

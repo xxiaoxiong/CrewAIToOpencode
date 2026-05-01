@@ -10,6 +10,7 @@ from src.orchestration.context_compactor import sanitize_stage_payload
 
 def _default_result(raw: str = "") -> dict[str, Any]:
     return {
+        "mode": "fallback",
         "passed": False,
         "score": 0,
         "blocking_issues": [],
@@ -109,6 +110,7 @@ def _review_with_crewai(prompt: str) -> str | None:
 
 def _heuristic_review(quality_result: dict) -> dict[str, Any]:
     result = _default_result("heuristic reviewer fallback")
+    result["mode"] = "heuristic"
     blocking: list[str] = []
 
     if not quality_result.get("passed"):
@@ -155,6 +157,7 @@ def _merge_semantic_review(base: dict[str, Any], semantic: dict[str, Any]) -> di
     if semantic.get("retry_instruction"):
         result["retry_instruction"] = semantic["retry_instruction"]
     result["raw"] = semantic.get("raw", result.get("raw", ""))
+    result["mode"] = "hybrid" if semantic.get("mode") == "llm" else result.get("mode", "heuristic")
     return result
 
 

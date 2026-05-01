@@ -4,6 +4,7 @@ import time
 from typing import Any, Callable
 
 from src.agents.architect_agent import build_architect_plan
+from src.agents.orchestrator_agent import plan_orchestration
 from src.agents.reporter_agent import summarize_delivery
 from src.agents.tester_agent import analyze_test_failure
 from src.config_loader import get_effective_pipeline, get_project_config
@@ -19,7 +20,7 @@ from src.orchestration.context_compactor import (
 from src.orchestration.prompt_builder import build_initial_prompt, build_retry_prompt
 from src.orchestration.report_writer import write_json_report, write_markdown_report
 from src.orchestration.stage_artifacts import make_review_artifact, repo_facts_from_artifact
-from src.orchestration.task_contract import build_task_contract
+from src.orchestration.task_contract import build_task_contract, build_llm_enhanced_task_contract
 from src.orchestration.task_context import TaskContext
 from src.quality.quality_gate import run_quality_gate
 from src.reviewer.crew_reviewer import review_change
@@ -237,6 +238,36 @@ def run_dev_task(
             context.repo_summary = repo_summary
             report["repo_summary"] = repo_summary
 
+        # Orchestrator: 智能编排分析
+        orchestrator_plan: dict[str, Any] = {}
+        orchestration_mode = (project_config.get("crewai", {}) or {}).get("orchestration_mode", "static")
+
+        if orchestration_mode in ("hybrid", "intelligent"):
+            current_stage = "orchestrator"
+            try:
+                orchestrator_plan = plan_orchestration(task_text, project_config, repo_summary)
+                report["orchestrator_plan"] = orchestrator_plan
+                _emit(progress, f"orchestrator: {orchestrator_plan.get('mode', 'unknown')} - {orchestrator_plan.get('task_type', 'unknown')}")
+
+                # 根据 orchestrator 建议调整 pipeline
+                if orchestrator_plan.get("passed"):
+                    if orchestrator_plan.get("should_explore") and not pipeline.get("explore_enabled"):
+                        _emit(progress, "orchestrator recommends explore, but it's disabled in pipeline")
+                    if orchestrator_plan.get("should_use_opencode_plan"):
+                        pipeline["opencode_plan_enabled"] = True
+                        _emit(progress, "orchestrator enabled opencode_plan")
+                    if orchestrator_plan.get("failure_policy", {}).get("max_iterations"):
+                        limit = min(limit, orchestrator_plan["failure_policy"]["max_iterations"])
+                        report["max_iterations"] = limit
+                        _emit(progress, f"orchestrator adjusted max_iterations to {limit}")
+            except Exception as exc:
+                if orchestration_mode == "intelligent":
+                    raise RuntimeError(f"Orchestrator failed in intelligent mode: {exc}") from exc
+                # hybrid 模式下 fallback
+                _emit(progress, f"orchestrator fallback: {exc}")
+                orchestrator_plan = {"mode": "fallback", "passed": False}
+                report["orchestrator_plan"] = orchestrator_plan
+
         architect_plan: dict[str, Any] = {}
         if pipeline.get("architect_enabled"):
             current_stage = "architect"
@@ -250,9 +281,18 @@ def run_dev_task(
             context.architect_plan = architect_plan
             report["architect_plan"] = architect_plan
             report["plan"] = architect_plan
-            _emit(progress, f"architect: {'PASS' if architect_plan.get('passed') else 'FALLBACK/FAIL'}")
+            _emit(progress, f"architect: {'PASS' if architect_plan.get('passed') else 'FALLBACK/FAIL'} (mode: {architect_plan.get('mode', 'unknown')})")
 
-        task_contract = build_task_contract(task_text, project_config, repo_summary, architect_plan=architect_plan)
+        # Task Contract: 根据 orchestration_mode 选择生成方式
+        if orchestration_mode == "intelligent" and orchestrator_plan.get("passed"):
+            task_contract = build_llm_enhanced_task_contract(
+                task_text, project_config, repo_summary, orchestrator_plan, architect_plan
+            )
+            _emit(progress, "task_contract: LLM-enhanced")
+        else:
+            task_contract = build_task_contract(task_text, project_config, repo_summary, architect_plan=architect_plan)
+            _emit(progress, "task_contract: deterministic")
+
         context.task_contract = task_contract
         report["task_contract"] = task_contract
 

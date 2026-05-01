@@ -12,6 +12,7 @@ from src.orchestration.context_compactor import sanitize_stage_payload
 def _fallback_report(report: dict[str, Any], reason: str = "") -> dict[str, Any]:
     quality = report.get("quality", {}) or {}
     return {
+        "mode": "fallback",
         "passed": bool(report.get("passed")),
         "summary": "Task completed successfully." if report.get("passed") else "Task did not pass validation.",
         "changed_files": coerce_string_list(quality.get("changed_files", [])),
@@ -74,6 +75,7 @@ def summarize_delivery(report: dict[str, Any], project_config: dict[str, Any]) -
         return _fallback_report(report, f"Reporter Agent fallback: {exc}")
 
     result = parse_json_object(raw, _fallback_report(report, "invalid reporter JSON"))
+    result["mode"] = "llm"
     result["passed"] = bool(result.get("passed", report.get("passed", False)))
     result["changed_files"] = coerce_string_list(result.get("changed_files", []))
     result["follow_up"] = coerce_string_list(result.get("follow_up", []))

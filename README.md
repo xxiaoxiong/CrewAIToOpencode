@@ -30,6 +30,48 @@ user task
 
 OpenCode raw responses are not passed to later stages. Fields such as `tokens`, `cache`, `sessionID`, `messageID`, `parts`, `raw_response`, `info`, `snapshot`, and `metadata` are stripped before data can enter prompts, retry history, or reports.
 
+## Intelligent Orchestration
+
+CrewAIToOpencode supports three orchestration modes:
+
+### 1. Static Mode (`orchestration_mode: static`)
+- **No LLM required** for orchestration layer
+- Uses fixed pipeline and deterministic rules
+- OpenCode still executes code changes
+- Quality gates and validation remain active
+- **Use when**: LLM is unavailable or for simple, predictable tasks
+
+### 2. Hybrid Mode (`orchestration_mode: hybrid`) - **Recommended Default**
+- **LLM-powered when available**, falls back gracefully when not
+- Orchestrator analyzes task complexity and recommends strategy
+- Architect, Tester, Reviewer, Reporter use LLM when possible
+- Task Contract can be LLM-enhanced
+- Deterministic rules provide safety net
+- **Use when**: You want intelligent orchestration with reliability
+
+### 3. Intelligent Mode (`orchestration_mode: intelligent`)
+- **LLM required** - fails if LLM unavailable
+- Orchestrator must analyze every task
+- Task Contract is always LLM-enhanced
+- No silent fallback to static mode
+- Maximum intelligence, strict requirements
+- **Use when**: You need full LLM orchestration and have reliable LLM access
+
+### What Each Mode Does
+
+| Feature | Static | Hybrid | Intelligent |
+|---------|--------|--------|-------------|
+| Orchestrator Agent | ❌ | ✅ (fallback) | ✅ (required) |
+| LLM-enhanced Task Contract | ❌ | ✅ (fallback) | ✅ (required) |
+| Architect Agent | ✅ (fallback) | ✅ (LLM preferred) | ✅ (LLM required) |
+| Tester Agent | ✅ (fallback) | ✅ (LLM preferred) | ✅ (LLM required) |
+| Reviewer Agent | ✅ (heuristic) | ✅ (hybrid) | ✅ (LLM required) |
+| Reporter Agent | ✅ (fallback) | ✅ (LLM preferred) | ✅ (LLM required) |
+| Quality Gate | ✅ (always) | ✅ (always) | ✅ (always) |
+| OpenCode Execution | ✅ (always) | ✅ (always) | ✅ (always) |
+
+**Important**: OpenCode is always the execution layer. CrewAI LLM only does intelligent analysis, planning, and validation - it never directly modifies code.
+
 ## Start OpenCode
 
 Open a terminal in the target project you want OpenCode to edit:
@@ -71,8 +113,23 @@ Important fields:
 - `opencode_timeouts`: per-stage API timeouts. The default is at least 600 seconds.
 - `prompt_limits`: prompt size limits. Defaults are `build_max_chars: 6000`, `retry_max_chars: 4000`, `plan_max_chars: 5000`, and `section_max_chars: 1800`.
 - `crewai.enabled`: enables the CrewAI LLM stages for architect, tester, reviewer, and reporter.
-- `crewai.llm.model`: default model is `claude-sonnet-4.6-thinking`.
-- `crewai.llm.base_url`: default Claude-compatible endpoint is configured in `config/projects.yaml`.
+- `crewai.orchestration_mode`: `static`, `hybrid` (recommended), or `intelligent`.
+- `crewai.llm.model`: default model is `claude-sonnet-4-6`.
+- `crewai.llm.base_url`: Claude-compatible endpoint.
+- `crewai.llm.temperature`: LLM temperature (default: 0.1).
+
+Example configuration:
+
+```yaml
+crewai:
+  enabled: true
+  orchestration_mode: "hybrid"  # static | hybrid | intelligent
+  llm:
+    model: "claude-sonnet-4-6"
+    base_url: "https://yunyi.rdzhvip.com/claude"
+    api_key: ""  # Read from environment variable
+    temperature: 0.1
+```
 
 `allowed_write_paths` may remain in old config files for compatibility, but it is no longer used as a blocking rule. Use `denied_paths` for safety boundaries.
 
@@ -83,13 +140,39 @@ The default `demo-project` is suitable for creating a small frontend project fro
 CrewAI LLM stages read credentials from `.env` or environment variables. Keep the API key out of `config/projects.yaml`.
 
 ```bash
-LLM_MODEL=claude-sonnet-4.6-thinking
+LLM_MODEL=claude-sonnet-4-6
 LLM_BASE_URL=https://yunyi.rdzhvip.com/claude
-LLM_API_KEY=your-key
-LLM_TEMPERATURE=0
+LLM_API_KEY=your-key-here
+LLM_TEMPERATURE=0.1
 ```
 
 Supported key aliases are `LLM_API_KEY`, `CLAUDE_API_KEY`, and `ANTHROPIC_API_KEY`.
+
+### Checking LLM Configuration
+
+Use the `--doctor` command to verify your LLM setup:
+
+```bash
+python -m src.cli --project demo-project --doctor
+```
+
+This will show:
+- CrewAI installation status
+- LLM configuration status (model, base_url, api_key presence)
+- Orchestration mode (static/hybrid/intelligent)
+- Agent availability (orchestrator, architect, tester, reviewer, reporter)
+- OpenCode connection status
+
+### Understanding Agent Modes
+
+When you run tasks, each agent reports its mode:
+- **`llm`**: Agent used LLM for intelligent analysis
+- **`fallback`**: Agent used deterministic rules (LLM unavailable or failed)
+- **`heuristic`**: Agent used rule-based logic (e.g., quality gate checks)
+- **`hybrid`**: Agent combined heuristic rules with LLM analysis
+- **`disabled`**: Agent was not enabled for this task
+
+Check the final report to see which agents used LLM vs fallback. This transparency helps you understand whether you got intelligent orchestration or static execution.
 
 ## Modes
 

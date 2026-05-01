@@ -94,17 +94,20 @@ projects:
 
     crewai:
       enabled: true
+      orchestration_mode: "hybrid"  # static | hybrid | intelligent
       mode: "hybrid_planning_review"
       planning_enabled: true
       tester_analysis_enabled: true
       reviewer_enabled: true
       reporter_enabled: true
       llm:
-        model: "claude-sonnet-4.6-thinking"
+        model: "claude-sonnet-4-6"
         base_url: "https://yunyi.rdzhvip.com/claude"
         api_key: ""
-        temperature: 0
+        temperature: 0.1
       agents:
+        orchestrator:
+          role: "Task orchestrator and strategy planner"
         architect:
           role: "Software architect"
         tester:

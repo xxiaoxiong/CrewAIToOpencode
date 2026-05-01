@@ -27,6 +27,7 @@ def _fallback_analysis(quality_result: dict[str, Any], reason: str = "") -> dict
         failure_type = "code_issue"
 
     return {
+        "mode": "fallback",
         "passed": False,
         "failure_type": failure_type,
         "root_cause_summary": "Deterministic test analysis fallback. Inspect stdout/stderr for the exact failure.",
@@ -37,6 +38,7 @@ def _fallback_analysis(quality_result: dict[str, Any], reason: str = "") -> dict
 
 def _no_failure_result() -> dict[str, Any]:
     return {
+        "mode": "disabled",
         "passed": True,
         "failure_type": "",
         "root_cause_summary": "",
@@ -97,6 +99,7 @@ def analyze_test_failure(
         return _fallback_analysis(quality_result, f"Tester Analyst fallback: {exc}")
 
     result = parse_json_object(raw, _fallback_analysis(quality_result, "invalid tester JSON"))
+    result["mode"] = "llm"
     result["passed"] = bool(result.get("passed", False))
     result["failure_type"] = str(result.get("failure_type", "unclear") or "unclear")
     result["root_cause_summary"] = str(result.get("root_cause_summary", ""))

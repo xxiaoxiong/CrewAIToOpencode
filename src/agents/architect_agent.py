@@ -14,6 +14,7 @@ def _fallback_plan(task_text: str, project_config: dict[str, Any], reason: str =
     if denied:
         constraints.append(f"Do not modify denied paths: {', '.join(denied)}")
     return {
+        "mode": "fallback",
         "passed": True,
         "summary": "Deterministic planning fallback generated without CrewAI.",
         "affected_areas": [],
@@ -80,6 +81,7 @@ def build_architect_plan(
 
     fallback = _fallback_plan(task_text, project_config, "invalid architect JSON")
     result = parse_json_object(raw, fallback)
+    result["mode"] = "llm"
     result["passed"] = bool(result.get("passed", False))
     result["affected_areas"] = coerce_string_list(result.get("affected_areas", []))
     result["execution_plan"] = coerce_string_list(result.get("execution_plan", []))

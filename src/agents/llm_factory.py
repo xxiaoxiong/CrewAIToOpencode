@@ -38,6 +38,77 @@ def get_llm_settings(project_config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def check_llm_config(project_config: dict[str, Any]) -> dict[str, Any]:
+    """
+    Check LLM configuration status.
+
+    Returns:
+        {
+            "configured": bool,
+            "crewai_installed": bool,
+            "model": str,
+            "base_url": str,
+            "api_key_present": bool,
+            "temperature": float,
+            "errors": list[str],
+            "warnings": list[str]
+        }
+    """
+    errors = []
+    warnings = []
+
+    # Check if crewai is installed
+    try:
+        import crewai
+        crewai_installed = True
+    except ImportError:
+        crewai_installed = False
+        errors.append("crewai package is not installed")
+
+    # Get LLM settings
+    settings = get_llm_settings(project_config)
+
+    # Check required fields
+    if not settings["model"]:
+        errors.append("LLM_MODEL or crewai.llm.model is not configured")
+    if not settings["api_key"]:
+        errors.append("LLM_API_KEY or crewai.llm.api_key is not configured")
+
+    # Warnings
+    if not settings["base_url"]:
+        warnings.append("LLM_BASE_URL is not configured (using default)")
+
+    configured = crewai_installed and not errors
+
+    return {
+        "configured": configured,
+        "crewai_installed": crewai_installed,
+        "model": settings["model"],
+        "base_url": settings["base_url"],
+        "api_key_present": bool(settings["api_key"]),
+        "temperature": settings["temperature"],
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def require_llm(project_config: dict[str, Any]) -> None:
+    """
+    Require LLM to be configured, otherwise raise an exception.
+
+    Raises:
+        RuntimeError: If LLM is not properly configured
+    """
+    status = check_llm_config(project_config)
+    if not status["configured"]:
+        error_msg = "LLM is not properly configured:\n"
+        for error in status["errors"]:
+            error_msg += f"  - {error}\n"
+        error_msg += "\nPlease configure crewai.llm in config/projects.yaml or set environment variables:\n"
+        error_msg += "  LLM_MODEL, LLM_BASE_URL, LLM_API_KEY"
+        raise RuntimeError(error_msg)
+
+
 def create_llm(project_config: dict[str, Any]):
     try:
         from crewai import LLM

@@ -99,13 +99,43 @@ def doctor(project_id: str) -> int:
         _print_check("config", False, {"error": str(exc)})
         return 1
 
+    # Check CrewAI installation
     try:
         import crewai
-
         _print_check("crewai", True, {"version": getattr(crewai, "__version__", "unknown")})
     except Exception as exc:
         failures += 1
         _print_check("crewai", False, {"error": str(exc)})
+
+    # Check LLM configuration
+    try:
+        from src.agents.llm_factory import check_llm_config
+        llm_status = check_llm_config(config)
+        _print_check("llm_config", llm_status["configured"], llm_status)
+        if not llm_status["configured"]:
+            failures += 1
+    except Exception as exc:
+        failures += 1
+        _print_check("llm_config", False, {"error": str(exc)})
+
+    # Check orchestration mode
+    crewai_config = config.get("crewai", {}) or {}
+    orchestration_mode = crewai_config.get("orchestration_mode", "static")
+    print(f"\n=== Orchestration Status ===")
+    print(f"CrewAI enabled: {crewai_config.get('enabled', False)}")
+    print(f"Orchestration mode: {orchestration_mode}")
+
+    # Check agent modes
+    print(f"\n=== Agent Status ===")
+    agents_status = {
+        "orchestrator": "available" if orchestration_mode in ("hybrid", "intelligent") else "disabled",
+        "architect": "available" if crewai_config.get("planning_enabled", True) else "disabled",
+        "tester": "available" if crewai_config.get("tester_analysis_enabled", True) else "disabled",
+        "reviewer": "available" if crewai_config.get("reviewer_enabled", True) else "disabled",
+        "reporter": "available" if crewai_config.get("reporter_enabled", True) else "disabled",
+    }
+    for agent, status in agents_status.items():
+        print(f"{agent}: {status}")
 
     failures += check_opencode(project_id)
     return 1 if failures else 0
@@ -113,6 +143,16 @@ def doctor(project_id: str) -> int:
 
 def capabilities(project_id: str) -> int:
     config = get_project_config(project_id)
+    crewai_config = config.get("crewai", {}) or {}
+    orchestration_mode = crewai_config.get("orchestration_mode", "static")
+
+    # Check LLM configuration
+    try:
+        from src.agents.llm_factory import check_llm_config
+        llm_status = check_llm_config(config)
+    except Exception:
+        llm_status = {"configured": False}
+
     payload = {
         "positioning": "personal local CrewAI + OpenCode multi-role programming orchestrator",
         "opencode_base_url": config.get("opencode_base_url"),
@@ -123,9 +163,22 @@ def capabilities(project_id: str) -> int:
             for name in sorted((config.get("modes", {}) or {}).keys())
         },
         "crewai": {
-            "enabled": (config.get("crewai", {}) or {}).get("enabled", False),
-            "mode": (config.get("crewai", {}) or {}).get("mode", ""),
-            "agents": (config.get("crewai", {}) or {}).get("agents", {}),
+            "enabled": crewai_config.get("enabled", False),
+            "orchestration_mode": orchestration_mode,
+            "mode": crewai_config.get("mode", ""),
+            "agents": crewai_config.get("agents", {}),
+        },
+        "intelligent_orchestration": {
+            "status": "available" if llm_status["configured"] and crewai_config.get("enabled") else "unavailable",
+            "mode": orchestration_mode,
+            "llm_configured": llm_status["configured"],
+            "capabilities": [
+                "Task analysis and complexity assessment",
+                "Dynamic pipeline adjustment",
+                "LLM-enhanced Task Contract",
+                "Intelligent validation",
+                "Semantic code review",
+            ] if llm_status["configured"] and crewai_config.get("enabled") else [],
         },
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
