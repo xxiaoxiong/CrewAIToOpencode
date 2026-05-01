@@ -78,6 +78,31 @@ def test_build_retry_prompt_contains_tester_analysis():
     assert "fix assertion" in prompt
 
 
+def test_build_retry_prompt_contains_contract_without_previous_prompt():
+    prompt = build_retry_prompt(
+        "test task",
+        {"passed": False, "changed_files": [], "test": {"passed": False, "stderr": "failed"}},
+        {"passed": False, "blocking_issues": ["missing output"], "retry_instruction": "create files"},
+        2,
+        task_contract={
+            "task_type": "implementation",
+            "goal": "test task",
+            "must_create_or_modify_files": ["src/app.py"],
+            "acceptance_criteria": ["files are created"],
+            "denied_paths": [".env"],
+            "validation_commands": ["pytest"],
+            "final_output_requirements": ["summarize validation"],
+        },
+    )
+
+    assert "[Task Contract]" in prompt
+    assert "[Failed Acceptance Items]" in prompt
+    assert "src/app.py" in prompt
+    assert "previous prompt" not in prompt.lower()
+    for forbidden in ["tokens", "cache", "sessionID", "messageID", "parts", "raw_response"]:
+        assert forbidden not in prompt
+
+
 def test_frontend_creation_prompt_requires_real_project_files():
     prompt = build_initial_prompt(
         "请创建一个 React + Vite 前端系统",

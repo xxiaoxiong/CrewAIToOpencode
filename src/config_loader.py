@@ -98,7 +98,7 @@ DEFAULT_MODES: dict[str, dict[str, Any]] = {
     "full": {
         "explore_enabled": True,
         "architect_enabled": True,
-        "opencode_plan_enabled": False,
+        "opencode_plan_enabled": True,
         "tester_enabled": True,
         "validator_enabled": True,
         "reviewer_enabled": True,

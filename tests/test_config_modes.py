@@ -24,7 +24,7 @@ def test_quick_standard_full_mode_pipeline_merge():
     assert standard["opencode_plan_enabled"] is False
     assert full["explore_enabled"] is True
     assert full["architect_enabled"] is True
-    assert full["opencode_plan_enabled"] is False
+    assert full["opencode_plan_enabled"] is True
     assert full["max_iterations"] == 3
     assert config["opencode_timeouts"]["default"] == 600
     assert config["opencode_timeouts"]["build"] == 900

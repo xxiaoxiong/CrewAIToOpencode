@@ -30,7 +30,7 @@ projects:
       plan_max_chars: 8000
       section_max_chars: 2500
 
-    test_command: "python -c \"print('demo tests ok')\""
+    test_command: "npm test"
     lint_command: ""
 
     denied_paths:
@@ -78,7 +78,7 @@ projects:
       full:
         explore_enabled: true
         architect_enabled: true
-        opencode_plan_enabled: false
+        opencode_plan_enabled: true
         tester_enabled: true
         validator_enabled: true
         reviewer_enabled: true

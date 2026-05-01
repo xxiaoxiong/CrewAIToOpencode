@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 from src.agents.reviewer_agent import run_semantic_review
+from src.orchestration.context_compactor import sanitize_stage_payload
 
 
 def _default_result(raw: str = "") -> dict[str, Any]:
@@ -45,9 +46,9 @@ def _coerce_review(raw: str) -> dict[str, Any]:
     return result
 
 
-def _build_review_prompt(task_text: str, quality_result: dict) -> str:
+def _build_review_prompt(task_text: str | dict[str, Any], quality_result: dict) -> str:
     payload = {
-        "task": task_text,
+        "task_contract": sanitize_stage_payload(task_text) if isinstance(task_text, dict) else {"goal": task_text},
         "changed_files": quality_result.get("changed_files", []),
         "quality_passed": quality_result.get("passed"),
         "git_diff_stat": quality_result.get("git_diff_stat", ""),
@@ -157,7 +158,7 @@ def _merge_semantic_review(base: dict[str, Any], semantic: dict[str, Any]) -> di
     return result
 
 
-def review_change(task_text: str, quality_result: dict, project_config: dict | None = None) -> dict[str, Any]:
+def review_change(task_text: str | dict[str, Any], quality_result: dict, project_config: dict | None = None) -> dict[str, Any]:
     heuristic = _heuristic_review(quality_result)
     hard_fail_reasons = _hard_fail_reasons(quality_result)
     if hard_fail_reasons:

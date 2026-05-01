@@ -5,16 +5,31 @@ from typing import Any
 
 from src.agents.json_utils import coerce_string_list, parse_json_object
 from src.agents.llm_factory import create_llm
+from src.orchestration.context_compactor import sanitize_stage_payload
 
 
-def build_semantic_review_prompt(task_text: str, quality_result: dict[str, Any]) -> str:
+def build_semantic_review_prompt(task_text: str | dict[str, Any], quality_result: dict[str, Any]) -> str:
+    test = quality_result.get("test", {}) or {}
+    lint = quality_result.get("lint", {}) or {}
     payload = {
-        "task": task_text,
+        "task_contract": sanitize_stage_payload(task_text) if isinstance(task_text, dict) else {"goal": task_text},
         "changed_files": quality_result.get("changed_files", []),
         "git_diff_stat": quality_result.get("git_diff_stat", ""),
-        "diff": str(quality_result.get("diff", ""))[-16000:],
-        "test": quality_result.get("test", {}),
-        "lint": quality_result.get("lint", {}),
+        "diff_excerpt": str(quality_result.get("diff", ""))[-12000:],
+        "test": {
+            "enabled": test.get("enabled"),
+            "passed": test.get("passed"),
+            "cmd": test.get("cmd", ""),
+            "stdout_tail": str(test.get("stdout", ""))[-1200:],
+            "stderr_tail": str(test.get("stderr", ""))[-1200:],
+        },
+        "lint": {
+            "enabled": lint.get("enabled"),
+            "passed": lint.get("passed"),
+            "cmd": lint.get("cmd", ""),
+            "stdout_tail": str(lint.get("stdout", ""))[-800:],
+            "stderr_tail": str(lint.get("stderr", ""))[-800:],
+        },
         "file_policy": quality_result.get("file_policy", {}),
         "bad_patterns": quality_result.get("bad_patterns", {}),
     }
@@ -26,7 +41,7 @@ def build_semantic_review_prompt(task_text: str, quality_result: dict[str, Any])
     )
 
 
-def run_semantic_review(task_text: str, quality_result: dict[str, Any], project_config: dict[str, Any]) -> dict[str, Any]:
+def run_semantic_review(task_text: str | dict[str, Any], quality_result: dict[str, Any], project_config: dict[str, Any]) -> dict[str, Any]:
     from crewai import Agent, Crew, Task
 
     llm = create_llm(project_config)

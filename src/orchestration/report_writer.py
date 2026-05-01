@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from src.orchestration.context_compactor import report_safe_payload
 from src.settings import REPORTS_DIR
 
 
@@ -19,9 +20,14 @@ def write_json_report(report: dict) -> str:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORTS_DIR / f"{_basename(report)}.json"
     report["report_json"] = str(path)
+    safe_report = _safe_report(report)
     with path.open("w", encoding="utf-8") as handle:
-        json.dump(report, handle, ensure_ascii=False, indent=2)
+        json.dump(safe_report, handle, ensure_ascii=False, indent=2)
     return str(path)
+
+
+def _safe_report(value: Any) -> Any:
+    return report_safe_payload(value)
 
 
 def _ok(value: bool | None) -> str:
@@ -69,6 +75,7 @@ def write_markdown_report(report: dict) -> str:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORTS_DIR / f"{_basename(report)}.md"
     report["report_md"] = str(path)
+    report = _safe_report(report)
 
     quality = report.get("quality", {})
     review = report.get("review", {})

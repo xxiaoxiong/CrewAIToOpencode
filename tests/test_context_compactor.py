@@ -1,6 +1,11 @@
 import json
 
-from src.orchestration.context_compactor import compact_explore_result, compact_text, extract_opencode_text
+from src.orchestration.context_compactor import (
+    compact_explore_result,
+    compact_text,
+    extract_opencode_text,
+    repo_fact_summary_from_explore,
+)
 
 
 def _raw_response():
@@ -29,6 +34,24 @@ def test_compact_explore_result_strips_api_metadata():
     assert "src/App.jsx" in payload
     assert len(result["raw_text_truncated"]) <= 80
     for forbidden in ["tokens", "cache", "sessionID", "messageID", "parts", "info"]:
+        assert forbidden not in payload
+
+
+def test_explore_response_becomes_repo_fact_summary():
+    result = repo_fact_summary_from_explore(_raw_response(), max_chars=200)
+
+    assert set(result) == {
+        "repo_summary",
+        "project_type",
+        "existing_files",
+        "relevant_files",
+        "risks",
+        "suggested_scope",
+    }
+    assert "src/App.jsx" in result["relevant_files"]
+    assert result["project_type"] in {"frontend/javascript", "javascript", "mixed"}
+    payload = json.dumps(result, ensure_ascii=False)
+    for forbidden in ["tokens", "cache", "sessionID", "messageID", "parts", "raw_response"]:
         assert forbidden not in payload
 
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from src.orchestration.context_compactor import compact_text, extract_opencode_text
+from src.orchestration.context_compactor import compact_text, repo_fact_summary_from_explore, sanitize_stage_payload
+from src.orchestration.task_contract import build_task_contract, compact_task_contract
 
 
 def _list_lines(values: list[str] | None) -> str:
@@ -15,7 +16,7 @@ def _list_lines(values: list[str] | None) -> str:
 def _real_project_requirement() -> str:
     return """
 [Real Project File Requirement]
-If the task asks you to create an application, frontend, website, or project from scratch, create actual runnable project files; do not satisfy it by only writing README text.
+Create actual runnable project files when the task asks for an application, frontend, website, or project from scratch; do not satisfy it by only writing README text.
 For JavaScript frontend projects, include the files that fit the requested stack, such as:
 - package.json
 - index.html
@@ -27,50 +28,11 @@ Use additional folders such as src/, public/, docs/, or data files when they are
 """
 
 
-def _plan_section(plan_result: dict[str, Any] | None) -> str:
-    if not plan_result:
-        return ""
-    payload = {
-        "summary": plan_result.get("summary", ""),
-        "affected_areas": plan_result.get("affected_areas", []),
-        "execution_plan": plan_result.get("execution_plan", []),
-        "constraints": plan_result.get("constraints", []),
-        "opencode_instruction": plan_result.get("opencode_instruction", ""),
-    }
-    return (
-        "\n[Architect Plan]\n"
-        "Use this planning context as guidance. OpenCode build remains the only agent allowed to edit files.\n"
-        f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
-    )
-
-
-def _compact_stage_section(title: str, payload: dict[str, Any] | None, max_chars: int = 2500) -> str:
-    if not payload:
-        return ""
-    allowed_keys = [
-        "summary",
-        "relevant_files",
-        "risks",
-        "test_hints",
-        "execution_plan",
-        "blocking_issues",
-        "retry_instruction",
-        "raw_text_truncated",
-    ]
-    compact_payload = {key: payload.get(key) for key in allowed_keys if key in payload}
-    if not compact_payload:
-        text = extract_opencode_text(payload)
-        if text:
-            compact_payload = {
-                "summary": compact_text(text, max_chars=600),
-                "raw_text_truncated": compact_text(text, max_chars=max_chars),
-            }
-    if not compact_payload:
-        return ""
-    body = json.dumps(compact_payload, ensure_ascii=False, indent=2)
+def _json_block(payload: dict[str, Any], max_chars: int) -> str:
+    body = json.dumps(sanitize_stage_payload(payload), ensure_ascii=False, indent=2)
     if len(body) > max_chars:
-        body = compact_text(body, max_chars=max_chars)
-    return f"\n[{title}]\n{body}\n"
+        return compact_text(body, max_chars=max_chars)
+    return body
 
 
 def build_initial_prompt(
@@ -79,18 +41,45 @@ def build_initial_prompt(
     plan_result: dict[str, Any] | None = None,
     explore_result: dict[str, Any] | None = None,
     opencode_plan: dict[str, Any] | None = None,
+    task_contract: dict[str, Any] | None = None,
+    repo_summary: dict[str, Any] | None = None,
 ) -> str:
-    denied_paths = _list_lines(project_config.get("denied_paths", []))
-    test_command = project_config.get("test_command", "")
     section_max_chars = int((project_config.get("prompt_limits", {}) or {}).get("section_max_chars", 2500))
+    repo_facts = repo_fact_summary_from_explore(repo_summary or explore_result or {}, max_chars=section_max_chars)
+    contract = compact_task_contract(
+        task_contract
+        or build_task_contract(
+            task_text,
+            project_config,
+            repo_facts,
+            architect_plan=plan_result,
+            opencode_plan=opencode_plan,
+        )
+    )
+    denied_paths = _list_lines(contract.get("denied_paths") or project_config.get("denied_paths", []))
+    validation_commands = contract.get("validation_commands", [])
+    validation_lines = _list_lines(validation_commands) if validation_commands else project_config.get("test_command", "")
+
+    legacy_plan_note = ""
+    if plan_result:
+        legacy_plan_note += "\n[Architect Plan]\nIncluded in the Task Contract acceptance criteria.\n"
+    if opencode_plan:
+        legacy_plan_note += "\n[OpenCode Plan Summary]\nIncluded in the Task Contract acceptance criteria.\n"
 
     return f"""You are the OpenCode build execution agent. Complete the task in the current repository.
 
 [Task Goal]
 {task_text}
-{_compact_stage_section("OpenCode Explore Summary", explore_result, section_max_chars)}
-{_plan_section(plan_result)}
-{_compact_stage_section("OpenCode Plan Summary", opencode_plan, section_max_chars)}
+
+[Task Contract]
+{_json_block(contract, max(section_max_chars, 1200))}
+
+[Repository Fact Summary]
+{_json_block(repo_facts, section_max_chars)}
+
+[OpenCode Explore Summary]
+This section is intentionally limited to the repository fact summary above.
+{legacy_plan_note}
 {_real_project_requirement()}
 [Execution Constraints]
 1. Read the relevant code before editing.
@@ -101,7 +90,7 @@ def build_initial_prompt(
 5. Do not delete, skip, weaken, or bypass tests to make validation pass.
 6. Do not introduce TODO, FIXME, HACK, debugger, console.log, secrets, or hardcoded credentials.
 7. After editing, run the configured validation command:
-{test_command or "no test command configured"}
+{validation_lines or "no test command configured"}
 8. If validation fails, use the logs to fix the root cause.
 9. At the end, briefly report changed files, rationale, and validation result.
 
@@ -117,28 +106,44 @@ def build_retry_prompt(
     iteration: int,
     tester_analysis: dict[str, Any] | None = None,
     validator_result: dict[str, Any] | None = None,
+    task_contract: dict[str, Any] | None = None,
 ) -> str:
-    test = quality_result.get("test", {})
-    lint = quality_result.get("lint", {})
-    blocking = review_result.get("blocking_issues", [])
-    validator_blocking = (validator_result or {}).get("blocking_issues", [])
+    test = quality_result.get("test", {}) or {}
+    lint = quality_result.get("lint", {}) or {}
+    blocking = review_result.get("blocking_issues", []) or []
+    validator_blocking = (validator_result or {}).get("blocking_issues", []) or []
     retry_instruction = (
         review_result.get("retry_instruction")
         or (validator_result or {}).get("retry_instruction")
         or (tester_analysis or {}).get("retry_instruction")
-        or ""
+        or "Fix the listed blocking issues and rerun validation."
+    )
+    contract = compact_task_contract(
+        task_contract
+        or build_task_contract(task_text, {"denied_paths": []}, repo_summary={}, architect_plan=None, opencode_plan=None)
     )
 
-    failure_summary = {
-        "quality_passed": quality_result.get("passed"),
-        "changed_files": quality_result.get("changed_files", []),
+    failed_acceptance_items: list[str] = []
+    if not quality_result.get("changed_files"):
+        failed_acceptance_items.append("No changed files were detected.")
+    if test.get("passed") is False:
+        failed_acceptance_items.append("Configured test command did not pass.")
+    if lint.get("passed") is False:
+        failed_acceptance_items.append("Configured lint command did not pass.")
+    failed_acceptance_items.extend(str(item) for item in validator_blocking)
+    failed_acceptance_items.extend(str(item) for item in blocking)
+
+    test_failure_summary = {
+        "test_command": test.get("cmd", ""),
         "test_passed": test.get("passed"),
+        "test_stdout_tail": str(test.get("stdout", ""))[-2000:],
+        "test_stderr_tail": str(test.get("stderr", ""))[-2000:],
+        "lint_command": lint.get("cmd", ""),
         "lint_passed": lint.get("passed"),
+        "lint_stdout_tail": str(lint.get("stdout", ""))[-1200:],
+        "lint_stderr_tail": str(lint.get("stderr", ""))[-1200:],
         "tester_failure_type": (tester_analysis or {}).get("failure_type", ""),
         "tester_root_cause": (tester_analysis or {}).get("root_cause_summary", ""),
-        "validator_blocking_issues": validator_blocking,
-        "reviewer_blocking_issues": blocking,
-        "retry_instruction": retry_instruction,
     }
 
     return f"""You are the OpenCode build execution agent. The previous attempt did not pass validation.
@@ -146,25 +151,17 @@ def build_retry_prompt(
 [Original Task]
 {task_text}
 
+[Task Contract]
+{json.dumps(contract, ensure_ascii=False, indent=2)}
+
 [Retry Iteration]
 {iteration}
 
-[Failure Summary]
-{json.dumps(failure_summary, ensure_ascii=False, indent=2)}
+[Failed Acceptance Items]
+{json.dumps(failed_acceptance_items, ensure_ascii=False, indent=2)}
 
-[Test Logs]
-Command: {test.get("cmd", "")}
-stdout:
-{test.get("stdout", "")[-2000:]}
-stderr:
-{test.get("stderr", "")[-2000:]}
-
-[Lint Logs]
-Command: {lint.get("cmd", "")}
-stdout:
-{lint.get("stdout", "")[-2000:]}
-stderr:
-{lint.get("stderr", "")[-2000:]}
+[Test Failure Summary]
+{json.dumps(test_failure_summary, ensure_ascii=False, indent=2)}
 
 [Tester Analyst]
 {json.dumps({
@@ -181,6 +178,9 @@ stderr:
 
 [Reviewer Blocking Issues]
 {json.dumps(blocking, ensure_ascii=False, indent=2)}
+
+[Retry Instruction]
+{retry_instruction}
 
 [Retry Requirements]
 1. Fix only the listed failure causes.

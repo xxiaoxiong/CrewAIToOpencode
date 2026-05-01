@@ -11,6 +11,8 @@ class TaskContext:
     session_id: str = ""
     mode: str = "custom"
     explore_result: dict[str, Any] = field(default_factory=dict)
+    repo_summary: dict[str, Any] = field(default_factory=dict)
+    task_contract: dict[str, Any] = field(default_factory=dict)
     architect_plan: dict[str, Any] = field(default_factory=dict)
     opencode_plan: dict[str, Any] = field(default_factory=dict)
     build_result: dict[str, Any] = field(default_factory=dict)

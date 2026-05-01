@@ -74,3 +74,34 @@ def test_report_failure_stage_and_timeout_guidance(tmp_path, monkeypatch):
     assert "- Failed stage: opencode_plan" in markdown
     assert "Timeout detected after 300 seconds" in markdown
     assert "Try standard mode or increase the relevant opencode_timeouts value" in markdown
+
+
+def test_json_report_strips_prompts_and_opencode_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.orchestration.report_writer.REPORTS_DIR", tmp_path)
+    report = {
+        "_report_basename": "safe-report",
+        "task": "task",
+        "project_id": "demo-project",
+        "session_id": "ses",
+        "passed": False,
+        "iterations_used": 1,
+        "max_iterations": 1,
+        "explore": {
+            "summary": "safe",
+            "sessionID": "raw",
+            "tokens": {"input": 1},
+            "parts": [{"type": "text", "text": "raw"}],
+            "raw_text_truncated": "raw text",
+        },
+        "retry_history": [{"iteration": 2, "prompt": "full prompt", "prompt_summary": "short"}],
+        "quality": {},
+        "review": {},
+        "validator": {},
+    }
+
+    json_path = write_json_report(report)
+    text = Path(json_path).read_text(encoding="utf-8")
+
+    assert "prompt_summary" in text
+    for forbidden in ["sessionID", "tokens", "parts", "raw_text_truncated", "full prompt"]:
+        assert forbidden not in text
