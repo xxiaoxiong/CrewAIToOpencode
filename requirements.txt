@@ -1,0 +1,9 @@
+crewai
+fastapi
+uvicorn
+requests
+pydantic
+pyyaml
+python-dotenv
+rich
+pytest

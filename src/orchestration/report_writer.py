@@ -1,0 +1,115 @@
+from __future__ import annotations
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from src.settings import REPORTS_DIR
+
+
+def _basename(report: dict[str, Any]) -> str:
+    if "_report_basename" not in report:
+        report["_report_basename"] = datetime.now().strftime("report-%Y%m%d-%H%M%S")
+    return str(report["_report_basename"])
+
+
+def write_json_report(report: dict) -> str:
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = REPORTS_DIR / f"{_basename(report)}.json"
+    report["report_json"] = str(path)
+    with path.open("w", encoding="utf-8") as handle:
+        json.dump(report, handle, ensure_ascii=False, indent=2)
+    return str(path)
+
+
+def _ok(value: bool | None) -> str:
+    return "PASS" if value else "FAIL"
+
+
+def _failure_reasons(report: dict) -> list[str]:
+    reasons: list[str] = []
+    quality = report.get("quality", {})
+    review = report.get("review", {})
+    if report.get("error"):
+        reasons.append(str(report["error"]))
+    if not quality.get("changed_files"):
+        reasons.append("No changed files were detected.")
+    if quality.get("test", {}).get("passed") is False:
+        reasons.append("Test command failed.")
+    if quality.get("lint", {}).get("passed") is False:
+        reasons.append("Lint command failed.")
+    if quality.get("file_policy", {}).get("passed") is False:
+        reasons.append("File policy failed.")
+    if quality.get("bad_patterns", {}).get("passed") is False:
+        reasons.append("Dangerous pattern scan failed.")
+    for issue in review.get("blocking_issues", []) or []:
+        reasons.append(str(issue))
+    return reasons
+
+
+def write_markdown_report(report: dict) -> str:
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    path = REPORTS_DIR / f"{_basename(report)}.md"
+    report["report_md"] = str(path)
+
+    quality = report.get("quality", {})
+    review = report.get("review", {})
+    test = quality.get("test", {})
+    lint = quality.get("lint", {})
+    reasons = _failure_reasons(report)
+    changed_files = quality.get("changed_files", [])
+
+    lines = [
+        f"# AI Development Report",
+        "",
+        f"- Task: {report.get('task', '')}",
+        f"- Project ID: {report.get('project_id', '')}",
+        f"- OpenCode session ID: {report.get('session_id', '')}",
+        f"- Success: {_ok(report.get('passed'))}",
+        f"- Iterations used: {report.get('iterations_used', 0)} / {report.get('max_iterations', 0)}",
+        "",
+        "## Changed Files",
+        "",
+        *([f"- {item}" for item in changed_files] or ["- None"]),
+        "",
+        "## Test Result",
+        "",
+        f"- Enabled: {test.get('enabled', False)}",
+        f"- Passed: {_ok(test.get('passed'))}",
+        f"- Command: `{test.get('cmd', '')}`",
+        "",
+        "## Lint Result",
+        "",
+        f"- Enabled: {lint.get('enabled', False)}",
+        f"- Passed: {_ok(lint.get('passed'))}",
+        f"- Command: `{lint.get('cmd', '')}`",
+        "",
+        "## File Policy",
+        "",
+        f"- Passed: {_ok(quality.get('file_policy', {}).get('passed'))}",
+        f"- Violations: `{json.dumps(quality.get('file_policy', {}).get('violations', []), ensure_ascii=False)}`",
+        "",
+        "## Dangerous Patterns",
+        "",
+        f"- Passed: {_ok(quality.get('bad_patterns', {}).get('passed'))}",
+        f"- Hits: `{json.dumps(quality.get('bad_patterns', {}).get('hits', []), ensure_ascii=False)}`",
+        "",
+        "## Reviewer",
+        "",
+        f"- Passed: {_ok(review.get('passed'))}",
+        f"- Score: {review.get('score', 0)}",
+        f"- Blocking issues: `{json.dumps(review.get('blocking_issues', []), ensure_ascii=False)}`",
+        "",
+        "## Failure Reasons",
+        "",
+        *([f"- {reason}" for reason in reasons] or ["- None"]),
+        "",
+        "## Next Steps",
+        "",
+        "- Inspect the JSON report for full command output and diff details." if not report.get("passed") else "- Review the diff and commit the accepted changes.",
+        "",
+    ]
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return str(path)

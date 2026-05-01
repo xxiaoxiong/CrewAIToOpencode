@@ -1,0 +1,32 @@
+projects:
+  demo-project:
+    name: demo-project
+    repo_path: "demo-project"
+
+    opencode_base_url: "http://127.0.0.1:4096"
+    opencode_username: "opencode"
+    opencode_password: "123456"
+
+    opencode_agent: "build"
+    opencode_provider_id: ""
+    opencode_model_id: ""
+
+    test_command: "python -c \"print('demo tests ok')\""
+    lint_command: ""
+
+    allowed_write_paths:
+      - "README.md"
+
+    denied_paths:
+      - ".env"
+      - ".env.local"
+      - "docker-compose.prod.yml"
+      - "package-lock.json"
+      - "pnpm-lock.yaml"
+      - "yarn.lock"
+
+    max_iterations: 3
+    reviewer_enabled: true
+    lint_enabled: false
+    test_enabled: true
+    worktree_enabled: false
