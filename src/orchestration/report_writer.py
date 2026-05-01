@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -48,7 +49,20 @@ def _failure_reasons(report: dict) -> list[str]:
         reasons.append(str(issue))
     for issue in review.get("blocking_issues", []) or []:
         reasons.append(str(issue))
+    timeout_seconds = _timeout_seconds(report, reasons)
+    if timeout_seconds:
+        reasons.append(
+            f"Timeout detected after {timeout_seconds} seconds. Try standard mode or increase the relevant opencode_timeouts value."
+        )
     return reasons
+
+
+def _timeout_seconds(report: dict, reasons: list[str] | None = None) -> str:
+    text = " ".join([str(report.get("error", "")), *(reasons or [])])
+    match = re.search(r"timed out after (\d+) seconds|read timeout=(\d+)", text, re.IGNORECASE)
+    if not match:
+        return ""
+    return next(group for group in match.groups() if group)
 
 
 def write_markdown_report(report: dict) -> str:
@@ -71,6 +85,7 @@ def write_markdown_report(report: dict) -> str:
     lint = quality.get("lint", {})
     reasons = _failure_reasons(report)
     changed_files = quality.get("changed_files", [])
+    failed_stage = report.get("failed_stage", "")
 
     lines = [
         f"# AI Development Report",
@@ -80,6 +95,7 @@ def write_markdown_report(report: dict) -> str:
         f"- OpenCode session ID: {report.get('session_id', '')}",
         f"- Mode: {report.get('mode', '')}",
         f"- Success: {_ok(report.get('passed'))}",
+        f"- Failed stage: {failed_stage or 'N/A'}",
         f"- Iterations used: {report.get('iterations_used', 0)} / {report.get('max_iterations', 0)}",
         "",
         "## OpenCode Explore",

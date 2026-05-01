@@ -49,9 +49,10 @@ Key fields:
 - `opencode_username` / `opencode_password`: Basic auth credentials.
 - `test_command`: command run by the quality gate.
 - `lint_command`: optional lint command.
-- `allowed_write_paths`: files or directories OpenCode may modify.
-- `denied_paths`: files or directories that must never be modified.
+- OpenCode is not restricted by an allowed-path whitelist. It may create or modify project files in the current `repo_path` / OpenCode working directory.
+- `denied_paths`: files or directories that must never be modified. The default safety floor protects `.git/`, `node_modules/`, `.env`, `.env.local`, `dist/`, and `build/`.
 - `max_iterations`: retry limit.
+- `opencode_timeouts`: per-stage message timeout settings for `explore`, `plan`, `build`, `repair`, and `validate`.
 
 ## Run CLI
 
@@ -64,6 +65,20 @@ Read the task from a file:
 ```bash
 python -m src.cli --project demo-project --task-file task.txt
 ```
+
+Create a frontend project in the included demo target:
+
+```bash
+python -m src.cli --project demo-project --mode standard --task-file tasks/frontend-demo.txt
+```
+
+## Prompt 压缩与上下文控制
+
+The flow does not pass full raw OpenCode message responses into later stages. Explore, Plan, Build, and Validate responses are compacted into small summaries before they are used in prompts or reports.
+
+Prompt limits are configured with `prompt_limits` in `config/projects.yaml`. If a build, retry, or plan prompt exceeds its limit, the flow fails before sending it to OpenCode so the context can be compressed.
+
+Reports store compact stage results plus prompt summaries and character counts. They do not store full huge retry prompts or raw OpenCode response metadata such as tokens, cache, session IDs, message IDs, or parts.
 
 Check OpenCode connectivity:
 

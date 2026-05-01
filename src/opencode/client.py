@@ -22,7 +22,7 @@ class OpenCodeClient:
         password: str = "",
         provider_id: str = "",
         model_id: str = "",
-        timeout: int = 60,
+        timeout: int = 600,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.provider_id = provider_id
@@ -40,6 +40,7 @@ class OpenCodeClient:
             password=project_config.get("opencode_password", ""),
             provider_id=project_config.get("opencode_provider_id", ""),
             model_id=project_config.get("opencode_model_id", ""),
+            timeout=int((project_config.get("opencode_timeouts", {}) or {}).get("default", 600)),
         )
 
     def _request(
@@ -49,9 +50,11 @@ class OpenCodeClient:
         *,
         json_body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        timeout: int | None = None,
     ) -> dict[str, Any]:
         candidates = [paths] if isinstance(paths, str) else list(paths)
         errors: list[str] = []
+        request_timeout = int(timeout or self.timeout)
 
         for path in candidates:
             url = f"{self.base_url}{path}"
@@ -61,8 +64,11 @@ class OpenCodeClient:
                     url,
                     json=json_body,
                     params=params,
-                    timeout=self.timeout,
+                    timeout=request_timeout,
                 )
+            except requests.Timeout as exc:
+                errors.append(f"{method} {path}: timed out after {request_timeout} seconds: {exc}")
+                continue
             except requests.RequestException as exc:
                 errors.append(f"{method} {path}: {exc}")
                 continue
@@ -81,7 +87,9 @@ class OpenCodeClient:
                 payload = response.json()
             except ValueError:
                 if _is_html_fallback(response):
-                    errors.append(f"{method} {path}: returned HTML instead of JSON")
+                    errors.append(
+                        f"{method} {path}: OpenCode returned HTML, likely hit web frontend route instead of API route."
+                    )
                     if len(candidates) > 1:
                         continue
                     raise OpenCodeError(errors[-1])
@@ -103,9 +111,15 @@ class OpenCodeClient:
         return self._request("GET", ["/agent", "/agents"])
 
     def create_session(self, title: str) -> dict[str, Any]:
-        return self._request("POST", ["/session", "/sessions"], json_body={"title": title})
+        return self._request("POST", "/session", json_body={"title": title})
 
-    def send_message(self, session_id: str, text: str, agent: str = "build") -> dict[str, Any]:
+    def send_message(
+        self,
+        session_id: str,
+        text: str,
+        agent: str = "build",
+        timeout: int | None = None,
+    ) -> dict[str, Any]:
         body: dict[str, Any] = {
             "agent": agent,
             "parts": [{"type": "text", "text": text}],
@@ -114,22 +128,23 @@ class OpenCodeClient:
             body["model"] = {"providerID": self.provider_id, "modelID": self.model_id}
         return self._request(
             "POST",
-            [f"/session/{session_id}/message", f"/sessions/{session_id}/message"],
+            f"/session/{session_id}/message",
             json_body=body,
+            timeout=timeout,
         )
 
     def list_messages(self, session_id: str, limit: int = 20) -> dict[str, Any]:
         return self._request(
             "GET",
-            [f"/session/{session_id}/message", f"/session/{session_id}/messages", f"/sessions/{session_id}/messages"],
+            [f"/session/{session_id}/message", f"/session/{session_id}/messages"],
             params={"limit": limit},
         )
 
     def get_diff(self, session_id: str) -> dict[str, Any]:
-        return self._request("GET", [f"/session/{session_id}/diff", f"/sessions/{session_id}/diff"])
+        return self._request("GET", f"/session/{session_id}/diff")
 
     def file_status(self) -> dict[str, Any]:
         return self._request("GET", ["/file/status", "/files/status"])
 
     def abort(self, session_id: str) -> dict[str, Any]:
-        return self._request("POST", [f"/session/{session_id}/abort", f"/sessions/{session_id}/abort"])
+        return self._request("POST", f"/session/{session_id}/abort")

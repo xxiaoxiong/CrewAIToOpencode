@@ -9,24 +9,23 @@ from src.agents.llm_factory import create_llm
 
 
 def _fallback_plan(task_text: str, project_config: dict[str, Any], reason: str = "") -> dict[str, Any]:
-    allowed = coerce_string_list(project_config.get("allowed_write_paths", []))
     denied = coerce_string_list(project_config.get("denied_paths", []))
-    constraints = [f"Only modify allowed paths: {', '.join(allowed) or 'none configured'}"]
+    constraints = ["OpenCode may create or modify project files inside the current repository as needed."]
     if denied:
         constraints.append(f"Do not modify denied paths: {', '.join(denied)}")
     return {
         "passed": True,
         "summary": "Deterministic planning fallback generated without CrewAI.",
-        "affected_areas": allowed,
+        "affected_areas": [],
         "execution_plan": [
             "Inspect the files relevant to the task.",
-            "Make the smallest change needed to satisfy the task.",
+            "Create or modify the project files needed to satisfy the task.",
             "Run the configured validation command.",
         ],
         "constraints": constraints,
         "opencode_instruction": (
-            f"Complete the task with minimal edits. Task: {task_text}. "
-            f"Allowed paths: {', '.join(allowed) or 'none configured'}."
+            f"Complete the task in the current repository. Task: {task_text}. "
+            "Create or modify needed project files, and avoid denied paths."
         ),
         "raw": reason or "architect fallback",
     }
@@ -38,7 +37,6 @@ def _build_prompt(task_text: str, project_config: dict[str, Any], repo_context: 
         "project": {
             "id": project_config.get("id"),
             "repo_path": project_config.get("repo_path"),
-            "allowed_write_paths": project_config.get("allowed_write_paths", []),
             "denied_paths": project_config.get("denied_paths", []),
             "test_command": project_config.get("test_command", ""),
         },

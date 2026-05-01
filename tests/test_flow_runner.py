@@ -14,7 +14,7 @@ class FakeClient:
     def create_session(self, title):
         return {"id": "ses_test"}
 
-    def send_message(self, session_id, text, agent):
+    def send_message(self, session_id, text, agent, timeout=None):
         return {"ok": True, "session_id": session_id, "agent": agent}
 
     def get_diff(self, session_id):
@@ -38,6 +38,7 @@ def test_run_dev_task_retries_until_pass(monkeypatch):
         },
     )
     monkeypatch.setattr(flow_runner.OpenCodeClient, "from_project_config", lambda config: FakeClient())
+    monkeypatch.setattr(flow_runner, "_write_reports", lambda report: report)
 
     calls = {"count": 0}
 

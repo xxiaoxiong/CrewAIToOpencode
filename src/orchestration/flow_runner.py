@@ -13,6 +13,7 @@ from src.opencode.multi_agent_runner import explore as opencode_explore
 from src.opencode.multi_agent_runner import plan as opencode_plan_task
 from src.opencode.multi_agent_runner import repair as opencode_repair
 from src.opencode.multi_agent_runner import validate as opencode_validate
+from src.orchestration.context_compactor import prompt_summary
 from src.orchestration.prompt_builder import build_initial_prompt, build_retry_prompt
 from src.orchestration.report_writer import write_json_report, write_markdown_report
 from src.orchestration.task_context import TaskContext
@@ -57,6 +58,35 @@ def _write_reports(report: dict[str, Any]) -> dict[str, Any]:
     write_markdown_report(report)
     write_json_report(report)
     return report
+
+
+def _infer_failed_stage(report: dict[str, Any]) -> str:
+    if report.get("failed_stage"):
+        return str(report["failed_stage"])
+    if report.get("error_stage"):
+        return str(report["error_stage"])
+    if report.get("error"):
+        return "build"
+    quality = report.get("quality", {}) or {}
+    validator = report.get("validator", {}) or {}
+    reviewer = report.get("reviewer", report.get("review", {})) or {}
+    if quality and quality.get("passed") is False:
+        return "quality_gate"
+    if validator and validator.get("passed") is False:
+        return "validator"
+    if reviewer and reviewer.get("passed") is False:
+        return "reviewer"
+    return "build"
+
+
+def _prompt_limit(project_config: dict[str, Any], key: str, default: int) -> int:
+    configured = project_config.get("prompt_limits", {}) or {}
+    return int(configured.get(key, default))
+
+
+def _assert_prompt_size(prompt: str, limit: int, stage: str) -> None:
+    if len(prompt) > limit:
+        raise ValueError(f"{stage} prompt is {len(prompt)} chars, above limit {limit}; compact context before sending.")
 
 
 def _crewai_enabled(project_config: dict[str, Any], key: str | None = None) -> bool:
@@ -133,9 +163,13 @@ def run_dev_task(
         "reporter": {},
         "retry_history": [],
         "iterations": [],
+        "failed_stage": "",
+        "prompt_metrics": {},
     }
 
+    current_stage = "startup"
     try:
+        current_stage = "explore"
         health = client.health()
         _emit(progress, f"OpenCode health: ok {health}")
         current_path = client.current_path()
@@ -151,6 +185,7 @@ def run_dev_task(
 
         explore_result: dict[str, Any] = {}
         if pipeline.get("explore_enabled"):
+            current_stage = "explore"
             explore_result = opencode_explore(session_id, task_text, project_config)
             context.explore_result = explore_result
             report["explore"] = explore_result
@@ -158,6 +193,7 @@ def run_dev_task(
 
         architect_plan: dict[str, Any] = {}
         if pipeline.get("architect_enabled"):
+            current_stage = "architect"
             repo_context = {
                 "health": health,
                 "path": current_path,
@@ -172,9 +208,11 @@ def run_dev_task(
 
         opencode_plan_result: dict[str, Any] = {}
         if pipeline.get("opencode_plan_enabled"):
+            current_stage = "opencode_plan"
             opencode_plan_result = opencode_plan_task(session_id, task_text, explore_result, architect_plan, project_config)
             context.opencode_plan = opencode_plan_result
             report["opencode_plan"] = opencode_plan_result
+            report["prompt_metrics"]["plan_prompt_chars"] = opencode_plan_result.get("prompt_chars", 0)
             _emit(progress, "opencode plan: done")
 
         last_quality: dict[str, Any] = {}
@@ -186,6 +224,7 @@ def run_dev_task(
             context.iteration = iteration
             _emit(progress, f"iteration {iteration}/{limit}: sending task to OpenCode")
             if iteration == 1:
+                current_stage = "build"
                 prompt = build_initial_prompt(
                     task_text,
                     project_config,
@@ -193,6 +232,9 @@ def run_dev_task(
                     explore_result=explore_result,
                     opencode_plan=opencode_plan_result,
                 )
+                report["prompt_metrics"]["build_prompt_chars"] = len(prompt)
+                _emit(progress, f"build prompt chars: {len(prompt)}")
+                _assert_prompt_size(prompt, _prompt_limit(project_config, "build_max_chars", 12000), "build")
                 send_result = (
                     opencode_build(session_id, prompt, project_config)
                     if pipeline.get("build_enabled", True)
@@ -202,9 +244,20 @@ def run_dev_task(
                 context.build_result = send_result
                 action = "build"
             else:
+                current_stage = "build"
                 prompt = build_retry_prompt(task_text, last_quality, last_review, iteration, last_tester, last_validator)
+                report["prompt_metrics"]["retry_prompt_chars"] = len(prompt)
+                _emit(progress, f"retry prompt chars: {len(prompt)}")
+                _assert_prompt_size(prompt, _prompt_limit(project_config, "retry_max_chars", 8000), "retry")
                 send_result = opencode_repair(session_id, prompt, project_config)
-                report["retry_history"].append({"iteration": iteration, "prompt": prompt, "result": send_result})
+                report["retry_history"].append(
+                    {
+                        "iteration": iteration,
+                        "prompt_summary": prompt_summary(prompt),
+                        "prompt_chars": len(prompt),
+                        "result": send_result,
+                    }
+                )
                 action = "repair"
             _emit(progress, f"iteration {iteration}/{limit}: message sent")
             time.sleep(float(project_config.get("post_message_wait_seconds", 1)))
@@ -214,6 +267,7 @@ def run_dev_task(
             except Exception as exc:
                 opencode_diff = {"error": str(exc)}
 
+            current_stage = "quality_gate"
             quality = run_quality_gate(project_config, task_text)
             context.quality_result = quality
             _emit(progress, f"quality gate: {'PASS' if quality.get('passed') else 'FAIL'}")
@@ -227,6 +281,7 @@ def run_dev_task(
             if tester:
                 _emit(progress, f"tester analyst: {'PASS' if tester.get('passed') else 'ANALYZED'}")
 
+            current_stage = "validator"
             validator = (
                 opencode_validate(session_id, task_text, quality, project_config)
                 if pipeline.get("validator_enabled", True)
@@ -235,6 +290,7 @@ def run_dev_task(
             context.validator_result = validator
             _emit(progress, f"validator: {'PASS' if validator.get('passed') else 'FAIL'}")
 
+            current_stage = "reviewer"
             review = (
                 (
                     review_change(task_text, quality, project_config)
@@ -282,8 +338,10 @@ def run_dev_task(
                 _emit(progress, f"iteration {iteration}/{limit}: will retry with failure context")
 
         if not report["passed"]:
+            report["failed_stage"] = _infer_failed_stage(report)
             _emit(progress, "task failed after max iterations")
         if pipeline.get("reporter_enabled"):
+            current_stage = "reporter"
             reporter = summarize_delivery(report, project_config)
             context.reporter_result = reporter
             report["reporter"] = reporter
@@ -291,6 +349,7 @@ def run_dev_task(
         return _write_reports(report)
     except Exception as exc:
         report["error"] = str(exc)
+        report["failed_stage"] = current_stage
         report["review"] = report.get("review") or {
             "passed": False,
             "score": 0,

@@ -12,7 +12,8 @@ def test_build_initial_prompt_contains_required_sections():
     )
 
     assert "[Task Goal]" in prompt
-    assert "Only modify these allowed paths" in prompt
+    assert "Only modify these allowed paths" not in prompt
+    assert "Create or modify any project files needed" in prompt
     assert "Never modify these denied paths" in prompt
     assert "npm test" in prompt
     assert "Do not delete, skip, weaken, or bypass tests" in prompt
@@ -43,9 +44,9 @@ def test_build_initial_prompt_contains_explore_and_opencode_plan():
         opencode_plan={"summary": "opencode plan"},
     )
 
-    assert "[OpenCode Explore Result]" in prompt
+    assert "[OpenCode Explore Summary]" in prompt
     assert "explore found README" in prompt
-    assert "[OpenCode Plan Result]" in prompt
+    assert "[OpenCode Plan Summary]" in prompt
     assert "opencode plan" in prompt
 
 
@@ -75,3 +76,18 @@ def test_build_retry_prompt_contains_tester_analysis():
     assert "[Tester Analyst]" in prompt
     assert "code_issue" in prompt
     assert "fix assertion" in prompt
+
+
+def test_frontend_creation_prompt_requires_real_project_files():
+    prompt = build_initial_prompt(
+        "请创建一个 React + Vite 前端系统",
+        {"allowed_write_paths": ["README.md"], "denied_paths": [".env"], "test_command": ""},
+    )
+
+    assert "Create actual runnable project files" in prompt
+    assert "do not satisfy it by only writing README text" in prompt
+    assert "package.json" in prompt
+    assert "index.html" in prompt
+    assert "src/main.jsx or src/main.tsx" in prompt
+    assert "src/App.jsx or src/App.tsx" in prompt
+    assert "Only modify these allowed paths" not in prompt

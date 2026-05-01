@@ -3,11 +3,28 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from src.orchestration.context_compactor import compact_text, extract_opencode_text
+
 
 def _list_lines(values: list[str] | None) -> str:
     if not values:
-        return "- unrestricted"
+        return "- none configured"
     return "\n".join(f"- {value}" for value in values)
+
+
+def _real_project_requirement() -> str:
+    return """
+[Real Project File Requirement]
+If the task asks you to create an application, frontend, website, or project from scratch, create actual runnable project files; do not satisfy it by only writing README text.
+For JavaScript frontend projects, include the files that fit the requested stack, such as:
+- package.json
+- index.html
+- src/main.jsx or src/main.tsx
+- src/App.jsx or src/App.tsx
+- a CSS/style file
+- README.md
+Use additional folders such as src/, public/, docs/, or data files when they are useful for the task.
+"""
 
 
 def _plan_section(plan_result: dict[str, Any] | None) -> str:
@@ -27,10 +44,33 @@ def _plan_section(plan_result: dict[str, Any] | None) -> str:
     )
 
 
-def _stage_section(title: str, payload: dict[str, Any] | None) -> str:
+def _compact_stage_section(title: str, payload: dict[str, Any] | None, max_chars: int = 2500) -> str:
     if not payload:
         return ""
-    return f"\n[{title}]\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
+    allowed_keys = [
+        "summary",
+        "relevant_files",
+        "risks",
+        "test_hints",
+        "execution_plan",
+        "blocking_issues",
+        "retry_instruction",
+        "raw_text_truncated",
+    ]
+    compact_payload = {key: payload.get(key) for key in allowed_keys if key in payload}
+    if not compact_payload:
+        text = extract_opencode_text(payload)
+        if text:
+            compact_payload = {
+                "summary": compact_text(text, max_chars=600),
+                "raw_text_truncated": compact_text(text, max_chars=max_chars),
+            }
+    if not compact_payload:
+        return ""
+    body = json.dumps(compact_payload, ensure_ascii=False, indent=2)
+    if len(body) > max_chars:
+        body = compact_text(body, max_chars=max_chars)
+    return f"\n[{title}]\n{body}\n"
 
 
 def build_initial_prompt(
@@ -40,22 +80,22 @@ def build_initial_prompt(
     explore_result: dict[str, Any] | None = None,
     opencode_plan: dict[str, Any] | None = None,
 ) -> str:
-    allowed_write_paths = _list_lines(project_config.get("allowed_write_paths", []))
     denied_paths = _list_lines(project_config.get("denied_paths", []))
     test_command = project_config.get("test_command", "")
+    section_max_chars = int((project_config.get("prompt_limits", {}) or {}).get("section_max_chars", 2500))
 
     return f"""You are the OpenCode build execution agent. Complete the task in the current repository.
 
 [Task Goal]
 {task_text}
-{_stage_section("OpenCode Explore Result", explore_result)}
+{_compact_stage_section("OpenCode Explore Summary", explore_result, section_max_chars)}
 {_plan_section(plan_result)}
-{_stage_section("OpenCode Plan Result", opencode_plan)}
+{_compact_stage_section("OpenCode Plan Summary", opencode_plan, section_max_chars)}
+{_real_project_requirement()}
 [Execution Constraints]
 1. Read the relevant code before editing.
-2. Make the smallest necessary change and avoid broad refactors.
-3. Only modify these allowed paths:
-{allowed_write_paths}
+2. Create or modify any project files needed inside the current repository/work directory to fully complete the task.
+3. Avoid broad unrelated refactors.
 4. Never modify these denied paths:
 {denied_paths}
 5. Do not delete, skip, weaken, or bypass tests to make validation pass.
@@ -80,22 +120,25 @@ def build_retry_prompt(
 ) -> str:
     test = quality_result.get("test", {})
     lint = quality_result.get("lint", {})
-    file_policy = quality_result.get("file_policy", {})
-    bad_patterns = quality_result.get("bad_patterns", {})
     blocking = review_result.get("blocking_issues", [])
+    validator_blocking = (validator_result or {}).get("blocking_issues", [])
+    retry_instruction = (
+        review_result.get("retry_instruction")
+        or (validator_result or {}).get("retry_instruction")
+        or (tester_analysis or {}).get("retry_instruction")
+        or ""
+    )
 
     failure_summary = {
         "quality_passed": quality_result.get("passed"),
         "changed_files": quality_result.get("changed_files", []),
         "test_passed": test.get("passed"),
         "lint_passed": lint.get("passed"),
-        "file_policy": file_policy,
-        "bad_patterns": bad_patterns,
-        "tester_analysis": tester_analysis or {},
-        "validator_result": validator_result or {},
-        "review_passed": review_result.get("passed"),
-        "review_blocking_issues": blocking,
-        "review_retry_instruction": review_result.get("retry_instruction", ""),
+        "tester_failure_type": (tester_analysis or {}).get("failure_type", ""),
+        "tester_root_cause": (tester_analysis or {}).get("root_cause_summary", ""),
+        "validator_blocking_issues": validator_blocking,
+        "reviewer_blocking_issues": blocking,
+        "retry_instruction": retry_instruction,
     }
 
     return f"""You are the OpenCode build execution agent. The previous attempt did not pass validation.
@@ -112,22 +155,29 @@ def build_retry_prompt(
 [Test Logs]
 Command: {test.get("cmd", "")}
 stdout:
-{test.get("stdout", "")[-4000:]}
+{test.get("stdout", "")[-2000:]}
 stderr:
-{test.get("stderr", "")[-4000:]}
+{test.get("stderr", "")[-2000:]}
 
 [Lint Logs]
 Command: {lint.get("cmd", "")}
 stdout:
-{lint.get("stdout", "")[-4000:]}
+{lint.get("stdout", "")[-2000:]}
 stderr:
-{lint.get("stderr", "")[-4000:]}
+{lint.get("stderr", "")[-2000:]}
 
 [Tester Analyst]
-{json.dumps(tester_analysis or {}, ensure_ascii=False, indent=2)}
+{json.dumps({
+    "failure_type": (tester_analysis or {}).get("failure_type", ""),
+    "root_cause_summary": (tester_analysis or {}).get("root_cause_summary", ""),
+    "retry_instruction": (tester_analysis or {}).get("retry_instruction", ""),
+}, ensure_ascii=False, indent=2)}
 
 [Validation Reviewer]
-{json.dumps(validator_result or {}, ensure_ascii=False, indent=2)}
+{json.dumps({
+    "blocking_issues": validator_blocking,
+    "retry_instruction": (validator_result or {}).get("retry_instruction", ""),
+}, ensure_ascii=False, indent=2)}
 
 [Reviewer Blocking Issues]
 {json.dumps(blocking, ensure_ascii=False, indent=2)}
@@ -135,7 +185,7 @@ stderr:
 [Retry Requirements]
 1. Fix only the listed failure causes.
 2. Do not expand scope or introduce unrelated changes.
-3. Do not modify files outside the allowed paths.
+3. You may create or modify needed project files in the current repository, but do not touch denied paths.
 4. Do not skip, delete, or weaken tests.
 5. Rerun validation and report the result.
 Continue in the same session."""

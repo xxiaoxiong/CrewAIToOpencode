@@ -39,10 +39,35 @@ DEFAULT_OPENCODE_AGENTS: dict[str, str] = {
     "general": "general",
 }
 
+DEFAULT_DENIED_PATHS: list[str] = [
+    ".git/",
+    "node_modules/",
+    ".env",
+    ".env.local",
+    "dist/",
+    "build/",
+]
+
+DEFAULT_OPENCODE_TIMEOUTS: dict[str, int] = {
+    "default": 600,
+    "explore": 180,
+    "plan": 300,
+    "build": 900,
+    "repair": 900,
+    "validate": 300,
+}
+
+DEFAULT_PROMPT_LIMITS: dict[str, int] = {
+    "build_max_chars": 12000,
+    "retry_max_chars": 8000,
+    "plan_max_chars": 8000,
+    "section_max_chars": 2500,
+}
+
 DEFAULT_TASK_PIPELINE: dict[str, Any] = {
     "explore_enabled": True,
     "architect_enabled": True,
-    "opencode_plan_enabled": True,
+    "opencode_plan_enabled": False,
     "build_enabled": True,
     "tester_enabled": True,
     "validator_enabled": True,
@@ -73,7 +98,7 @@ DEFAULT_MODES: dict[str, dict[str, Any]] = {
     "full": {
         "explore_enabled": True,
         "architect_enabled": True,
-        "opencode_plan_enabled": True,
+        "opencode_plan_enabled": False,
         "tester_enabled": True,
         "validator_enabled": True,
         "reviewer_enabled": True,
@@ -114,14 +139,15 @@ def get_project_config(project_id: str) -> dict[str, Any]:
     config = dict(projects[project_id] or {})
     config["id"] = project_id
     config["repo_path"] = _resolve_repo_path(config.get("repo_path"))
-    config.setdefault("allowed_write_paths", [])
-    config.setdefault("denied_paths", [])
+    config["denied_paths"] = config.get("denied_paths") or list(DEFAULT_DENIED_PATHS)
     config.setdefault("max_iterations", 3)
     config.setdefault("reviewer_enabled", True)
     config.setdefault("lint_enabled", False)
     config.setdefault("test_enabled", True)
     config.setdefault("opencode_agent", "build")
     config["opencode_agents"] = {**DEFAULT_OPENCODE_AGENTS, **(config.get("opencode_agents", {}) or {})}
+    config["opencode_timeouts"] = {**DEFAULT_OPENCODE_TIMEOUTS, **(config.get("opencode_timeouts", {}) or {})}
+    config["prompt_limits"] = {**DEFAULT_PROMPT_LIMITS, **(config.get("prompt_limits", {}) or {})}
     config["task_pipeline"] = {**DEFAULT_TASK_PIPELINE, **(config.get("task_pipeline", {}) or {})}
     configured_modes = config.get("modes", {}) or {}
     config["modes"] = {

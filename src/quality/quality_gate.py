@@ -11,7 +11,7 @@ from src.quality.git_checker import (
 from src.quality.pattern_checker import scan_bad_patterns
 
 
-def run_quality_gate(project_config: dict, task_text: str = "") -> dict:
+def run_quality_gate(project_config: dict, task_text: str | None = None) -> dict:
     cwd = project_config["repo_path"]
     git_status = get_git_status(cwd)
     diff = get_git_diff(cwd)
@@ -32,7 +32,7 @@ def run_quality_gate(project_config: dict, task_text: str = "") -> dict:
 
     file_policy = check_file_policy(
         changed_files,
-        project_config.get("allowed_write_paths", []),
+        None,
         project_config.get("denied_paths", []),
     )
     bad_patterns = scan_bad_patterns(diff)

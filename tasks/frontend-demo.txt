@@ -1,0 +1,29 @@
+请在当前空仓库中创建一个可运行的 React + Vite 前端项目。
+
+技术栈：
+- React
+- Vite
+- JavaScript
+- 普通 CSS
+
+功能要求：
+1. 创建一个 AI 编排任务管理系统的前端页面。
+2. 包含顶部导航栏、左侧菜单、首页仪表盘、任务列表、任务详情区域。
+3. 使用本地 mock 数据，不需要后端接口。
+4. 页面风格简洁、现代。
+
+必须创建真实项目文件，不允许只修改 README。
+至少包含：
+- package.json
+- index.html
+- vite.config.js
+- src/main.jsx
+- src/App.jsx
+- src/styles.css
+- src/data/mockTasks.js
+- README.md
+
+package.json 必须包含：
+- dev
+- build
+- preview

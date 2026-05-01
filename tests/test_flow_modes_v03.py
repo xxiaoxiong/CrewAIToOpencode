@@ -67,6 +67,7 @@ def _config(mode_flags=None):
 def _patch_common(monkeypatch, config):
     monkeypatch.setattr(flow_runner, "get_project_config", lambda project_id: config)
     monkeypatch.setattr(flow_runner.OpenCodeClient, "from_project_config", lambda config: FakeClient())
+    monkeypatch.setattr(flow_runner, "_write_reports", lambda report: report)
     monkeypatch.setattr(
         flow_runner,
         "run_quality_gate",
@@ -175,4 +176,7 @@ def test_flow_runner_repairs_when_validator_fails(monkeypatch):
     assert report["passed"] is True
     assert calls["build"] == 1
     assert calls["repair"] == 1
-    assert "expand" in report["retry_history"][0]["prompt"]
+    assert "prompt" not in report["retry_history"][0]
+    assert "prompt_summary" in report["retry_history"][0]
+    assert "prompt_chars" in report["retry_history"][0]
+    assert "expand" in report["retry_history"][0]["prompt_summary"]

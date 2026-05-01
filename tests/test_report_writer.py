@@ -48,3 +48,29 @@ def test_report_contains_all_v03_stage_results(tmp_path, monkeypatch):
     assert "## CrewAI Reviewer" in markdown
     assert "## CrewAI Reporter" in markdown
     assert "## Retry History" in markdown
+
+
+def test_report_failure_stage_and_timeout_guidance(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.orchestration.report_writer.REPORTS_DIR", tmp_path)
+    report = {
+        "_report_basename": "timeout-report",
+        "task": "task",
+        "project_id": "demo-project",
+        "mode": "full",
+        "session_id": "ses",
+        "passed": False,
+        "failed_stage": "opencode_plan",
+        "iterations_used": 0,
+        "max_iterations": 3,
+        "quality": {},
+        "review": {"blocking_issues": []},
+        "validator": {},
+        "error": "POST /session/ses/message: timed out after 300 seconds",
+    }
+
+    md_path = write_markdown_report(report)
+    markdown = Path(md_path).read_text(encoding="utf-8")
+
+    assert "- Failed stage: opencode_plan" in markdown
+    assert "Timeout detected after 300 seconds" in markdown
+    assert "Try standard mode or increase the relevant opencode_timeouts value" in markdown

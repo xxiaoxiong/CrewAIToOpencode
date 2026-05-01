@@ -18,7 +18,7 @@ class CapturingClient:
     def create_session(self, title):
         return {"id": "ses_test"}
 
-    def send_message(self, session_id, text, agent):
+    def send_message(self, session_id, text, agent, timeout=None):
         self.sent_prompts.append(text)
         return {"ok": True, "agent": agent}
 
@@ -41,6 +41,8 @@ def test_architect_agent_falls_back_when_crewai_unavailable(monkeypatch):
     assert result["passed"] is True
     assert "fallback" in result["raw"].lower()
     assert result["opencode_instruction"]
+    assert "Allowed paths" not in result["opencode_instruction"]
+    assert not any("Only modify allowed paths" in item for item in result["constraints"])
 
 
 def test_flow_runner_crewai_disabled_keeps_v01_path(monkeypatch):
@@ -59,6 +61,7 @@ def test_flow_runner_crewai_disabled_keeps_v01_path(monkeypatch):
         },
     )
     monkeypatch.setattr(flow_runner.OpenCodeClient, "from_project_config", lambda config: client)
+    monkeypatch.setattr(flow_runner, "_write_reports", lambda report: report)
     monkeypatch.setattr(
         flow_runner,
         "build_architect_plan",
@@ -113,6 +116,7 @@ def test_flow_runner_crewai_enabled_adds_plan_and_tester_retry(monkeypatch):
         },
     )
     monkeypatch.setattr(flow_runner.OpenCodeClient, "from_project_config", lambda config: client)
+    monkeypatch.setattr(flow_runner, "_write_reports", lambda report: report)
     monkeypatch.setattr(
         flow_runner,
         "build_architect_plan",

@@ -17,31 +17,40 @@ projects:
       general: "general"
     opencode_provider_id: ""
     opencode_model_id: ""
+    opencode_timeouts:
+      default: 600
+      explore: 180
+      plan: 300
+      build: 900
+      repair: 900
+      validate: 300
+    prompt_limits:
+      build_max_chars: 12000
+      retry_max_chars: 8000
+      plan_max_chars: 8000
+      section_max_chars: 2500
 
     test_command: "python -c \"print('demo tests ok')\""
     lint_command: ""
 
-    allowed_write_paths:
-      - "README.md"
-
     denied_paths:
+      - ".git/"
+      - "node_modules/"
       - ".env"
       - ".env.local"
-      - "docker-compose.prod.yml"
-      - "package-lock.json"
-      - "pnpm-lock.yaml"
-      - "yarn.lock"
+      - "dist/"
+      - "build/"
 
     max_iterations: 3
     reviewer_enabled: true
     lint_enabled: false
-    test_enabled: true
+    test_enabled: false
     worktree_enabled: false
 
     task_pipeline:
       explore_enabled: true
       architect_enabled: true
-      opencode_plan_enabled: true
+      opencode_plan_enabled: false
       build_enabled: true
       tester_enabled: true
       validator_enabled: true
@@ -69,7 +78,7 @@ projects:
       full:
         explore_enabled: true
         architect_enabled: true
-        opencode_plan_enabled: true
+        opencode_plan_enabled: false
         tester_enabled: true
         validator_enabled: true
         reviewer_enabled: true

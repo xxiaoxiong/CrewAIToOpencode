@@ -20,6 +20,7 @@ class FakeSession:
 
     def request(self, method, url, **kwargs):
         self.paths.append(url.rsplit("/", 1)[-1])
+        self.last_kwargs = kwargs
         return self.responses.pop(0)
 
 
@@ -51,5 +52,25 @@ def test_request_rejects_single_html_fallback():
     client = OpenCodeClient("http://opencode.test")
     client.session = FakeSession([_response("<html></html>", "text/html")])
 
-    with pytest.raises(OpenCodeError, match="returned HTML instead of JSON"):
+    with pytest.raises(OpenCodeError, match="OpenCode returned HTML"):
         client._request("GET", "/missing")
+
+
+def test_send_message_default_timeout_is_600():
+    client = OpenCodeClient("http://opencode.test")
+    client.session = FakeSession([_response('{"ok":true}')])
+
+    result = client.send_message("ses", "hello")
+
+    assert result == {"ok": True}
+    assert client.session.last_kwargs["timeout"] == 600
+
+
+def test_send_message_does_not_call_sessions_fallback():
+    client = OpenCodeClient("http://opencode.test")
+    client.session = FakeSession([_response("not found", status=404)])
+
+    with pytest.raises(OpenCodeError, match="/session/ses/message failed"):
+        client.send_message("ses", "hello")
+
+    assert len(client.session.paths) == 1
