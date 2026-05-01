@@ -1,0 +1,93 @@
+{
+  "project_id": "demo-project",
+  "task": "task",
+  "mode": "full",
+  "pipeline": {
+    "explore_enabled": true,
+    "architect_enabled": true,
+    "opencode_plan_enabled": true,
+    "build_enabled": true,
+    "tester_enabled": true,
+    "reviewer_enabled": true,
+    "reporter_enabled": true,
+    "max_iterations": 1,
+    "mode": "full"
+  },
+  "session_id": "ses_test",
+  "passed": true,
+  "iterations_used": 1,
+  "max_iterations": 1,
+  "explore": {
+    "summary": "explore"
+  },
+  "architect_plan": {
+    "summary": "architect"
+  },
+  "opencode_plan": {
+    "summary": "plan"
+  },
+  "build": {
+    "ok": true
+  },
+  "quality": {
+    "passed": true,
+    "changed_files": [
+      "README.md"
+    ],
+    "test": {
+      "enabled": true,
+      "passed": true
+    },
+    "lint": {
+      "enabled": false,
+      "passed": true
+    },
+    "file_policy": {
+      "passed": true,
+      "violations": []
+    },
+    "bad_patterns": {
+      "passed": true,
+      "hits": []
+    },
+    "diff": "",
+    "git_diff_stat": ""
+  },
+  "tester": {},
+  "reviewer": {
+    "passed": true,
+    "score": 85,
+    "blocking_issues": []
+  },
+  "review": {
+    "passed": true,
+    "score": 85,
+    "blocking_issues": []
+  },
+  "plan": {
+    "summary": "architect"
+  },
+  "reporter": {
+    "passed": true
+  },
+  "retry_history": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "action": "build",
+      "send_result": {
+        "ok": true
+      },
+      "opencode_diff": {
+        "data": []
+      },
+      "quality_passed": true,
+      "tester": {},
+      "review_passed": true,
+      "passed": true
+    }
+  ],
+  "_report_basename": "report-20260501-160926",
+  "report_md": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\reports\\report-20260501-160926.md",
+  "report_json": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\reports\\report-20260501-160926.json"
+}

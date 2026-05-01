@@ -34,6 +34,21 @@ def test_build_initial_prompt_accepts_plan_result():
     assert "Use a small README edit." in prompt
 
 
+def test_build_initial_prompt_contains_explore_and_opencode_plan():
+    prompt = build_initial_prompt(
+        "test task",
+        {"allowed_write_paths": ["README.md"], "denied_paths": [], "test_command": "pytest"},
+        {"summary": "architect"},
+        explore_result={"summary": "explore found README"},
+        opencode_plan={"summary": "opencode plan"},
+    )
+
+    assert "[OpenCode Explore Result]" in prompt
+    assert "explore found README" in prompt
+    assert "[OpenCode Plan Result]" in prompt
+    assert "opencode plan" in prompt
+
+
 def test_build_retry_prompt_contains_failure_context():
     prompt = build_retry_prompt(
         "test task",

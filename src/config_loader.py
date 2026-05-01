@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,52 @@ DEFAULT_CREWAI_CONFIG: dict[str, Any] = {
         "tester": {"role": "Test failure analyst"},
         "reviewer": {"role": "Senior code reviewer"},
         "reporter": {"role": "Delivery reporter"},
+    },
+}
+
+DEFAULT_OPENCODE_AGENTS: dict[str, str] = {
+    "explorer": "explore",
+    "planner": "plan",
+    "coder": "build",
+    "repairer": "build",
+    "general": "general",
+}
+
+DEFAULT_TASK_PIPELINE: dict[str, Any] = {
+    "explore_enabled": True,
+    "architect_enabled": True,
+    "opencode_plan_enabled": True,
+    "build_enabled": True,
+    "tester_enabled": True,
+    "reviewer_enabled": True,
+    "reporter_enabled": True,
+    "max_iterations": 3,
+}
+
+DEFAULT_MODES: dict[str, dict[str, Any]] = {
+    "quick": {
+        "explore_enabled": False,
+        "architect_enabled": False,
+        "opencode_plan_enabled": False,
+        "tester_enabled": False,
+        "reviewer_enabled": True,
+        "reporter_enabled": True,
+    },
+    "standard": {
+        "explore_enabled": True,
+        "architect_enabled": True,
+        "opencode_plan_enabled": False,
+        "tester_enabled": True,
+        "reviewer_enabled": True,
+        "reporter_enabled": True,
+    },
+    "full": {
+        "explore_enabled": True,
+        "architect_enabled": True,
+        "opencode_plan_enabled": True,
+        "tester_enabled": True,
+        "reviewer_enabled": True,
+        "reporter_enabled": True,
     },
 }
 
@@ -69,7 +116,15 @@ def get_project_config(project_id: str) -> dict[str, Any]:
     config.setdefault("lint_enabled", False)
     config.setdefault("test_enabled", True)
     config.setdefault("opencode_agent", "build")
-    crewai = dict(DEFAULT_CREWAI_CONFIG)
+    config["opencode_agents"] = {**DEFAULT_OPENCODE_AGENTS, **(config.get("opencode_agents", {}) or {})}
+    config["task_pipeline"] = {**DEFAULT_TASK_PIPELINE, **(config.get("task_pipeline", {}) or {})}
+    configured_modes = config.get("modes", {}) or {}
+    config["modes"] = {
+        name: {**defaults, **(configured_modes.get(name, {}) or {})}
+        for name, defaults in DEFAULT_MODES.items()
+    }
+
+    crewai = deepcopy(DEFAULT_CREWAI_CONFIG)
     configured_crewai = config.get("crewai", {}) or {}
     crewai.update({key: value for key, value in configured_crewai.items() if key not in {"llm", "agents"}})
     crewai["llm"] = {**DEFAULT_CREWAI_CONFIG["llm"], **(configured_crewai.get("llm", {}) or {})}
@@ -80,3 +135,15 @@ def get_project_config(project_id: str) -> dict[str, Any]:
     }
     config["crewai"] = crewai
     return config
+
+
+def get_effective_pipeline(project_config: dict[str, Any], mode: str | None = None) -> dict[str, Any]:
+    pipeline = {**DEFAULT_TASK_PIPELINE, **(project_config.get("task_pipeline", {}) or {})}
+    selected_mode = mode or str(project_config.get("mode", "") or "")
+    if selected_mode:
+        modes = project_config.get("modes", {}) or {}
+        if selected_mode not in modes:
+            raise ValueError(f"unknown mode: {selected_mode}")
+        pipeline.update(modes[selected_mode] or {})
+    pipeline["mode"] = selected_mode or "custom"
+    return pipeline

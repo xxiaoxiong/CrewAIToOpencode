@@ -17,6 +17,7 @@ class RunTaskRequest(BaseModel):
     project_id: str = "demo-project"
     task: str
     max_iterations: int | None = None
+    mode: str | None = None
 
 
 @app.get("/health")
@@ -26,7 +27,7 @@ def health() -> dict:
 
 @app.post("/tasks/run")
 def run_task(request: RunTaskRequest) -> dict:
-    report = run_dev_task(request.project_id, request.task, request.max_iterations)
+    report = run_dev_task(request.project_id, request.task, request.max_iterations, mode=request.mode)
     return {
         "passed": report.get("passed", False),
         "report_json": report.get("report_json", ""),

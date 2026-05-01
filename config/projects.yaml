@@ -8,6 +8,12 @@ projects:
     opencode_password: "123456"
 
     opencode_agent: "build"
+    opencode_agents:
+      explorer: "explore"
+      planner: "plan"
+      coder: "build"
+      repairer: "build"
+      general: "general"
     opencode_provider_id: ""
     opencode_model_id: ""
 
@@ -30,6 +36,39 @@ projects:
     lint_enabled: false
     test_enabled: true
     worktree_enabled: false
+
+    task_pipeline:
+      explore_enabled: true
+      architect_enabled: true
+      opencode_plan_enabled: true
+      build_enabled: true
+      tester_enabled: true
+      reviewer_enabled: true
+      reporter_enabled: true
+      max_iterations: 3
+
+    modes:
+      quick:
+        explore_enabled: false
+        architect_enabled: false
+        opencode_plan_enabled: false
+        tester_enabled: false
+        reviewer_enabled: true
+        reporter_enabled: true
+      standard:
+        explore_enabled: true
+        architect_enabled: true
+        opencode_plan_enabled: false
+        tester_enabled: true
+        reviewer_enabled: true
+        reporter_enabled: true
+      full:
+        explore_enabled: true
+        architect_enabled: true
+        opencode_plan_enabled: true
+        tester_enabled: true
+        reviewer_enabled: true
+        reporter_enabled: true
 
     crewai:
       enabled: false

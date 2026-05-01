@@ -27,10 +27,18 @@ def _plan_section(plan_result: dict[str, Any] | None) -> str:
     )
 
 
+def _stage_section(title: str, payload: dict[str, Any] | None) -> str:
+    if not payload:
+        return ""
+    return f"\n[{title}]\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
+
+
 def build_initial_prompt(
     task_text: str,
     project_config: dict,
     plan_result: dict[str, Any] | None = None,
+    explore_result: dict[str, Any] | None = None,
+    opencode_plan: dict[str, Any] | None = None,
 ) -> str:
     allowed_write_paths = _list_lines(project_config.get("allowed_write_paths", []))
     denied_paths = _list_lines(project_config.get("denied_paths", []))
@@ -40,7 +48,9 @@ def build_initial_prompt(
 
 [Task Goal]
 {task_text}
+{_stage_section("OpenCode Explore Result", explore_result)}
 {_plan_section(plan_result)}
+{_stage_section("OpenCode Plan Result", opencode_plan)}
 [Execution Constraints]
 1. Read the relevant code before editing.
 2. Make the smallest necessary change and avoid broad refactors.

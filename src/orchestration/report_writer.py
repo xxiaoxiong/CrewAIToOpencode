@@ -55,9 +55,14 @@ def write_markdown_report(report: dict) -> str:
 
     quality = report.get("quality", {})
     review = report.get("review", {})
+    explore = report.get("explore", {})
     plan = report.get("plan", {})
+    architect_plan = report.get("architect_plan", plan)
+    opencode_plan = report.get("opencode_plan", {})
+    build = report.get("build", {})
     tester = report.get("tester", {})
     reporter = report.get("reporter", {})
+    retry_history = report.get("retry_history", [])
     test = quality.get("test", {})
     lint = quality.get("lint", {})
     reasons = _failure_reasons(report)
@@ -69,14 +74,27 @@ def write_markdown_report(report: dict) -> str:
         f"- Task: {report.get('task', '')}",
         f"- Project ID: {report.get('project_id', '')}",
         f"- OpenCode session ID: {report.get('session_id', '')}",
+        f"- Mode: {report.get('mode', '')}",
         f"- Success: {_ok(report.get('passed'))}",
         f"- Iterations used: {report.get('iterations_used', 0)} / {report.get('max_iterations', 0)}",
         "",
-        "## Architect Plan",
+        "## OpenCode Explore",
         "",
-        f"- Summary: {plan.get('summary', '')}",
-        f"- Execution plan: `{json.dumps(plan.get('execution_plan', []), ensure_ascii=False)}`",
-        f"- OpenCode instruction: {plan.get('opencode_instruction', '')}",
+        f"```json\n{json.dumps(explore, ensure_ascii=False, indent=2)[:8000]}\n```",
+        "",
+        "## CrewAI Architect",
+        "",
+        f"- Summary: {architect_plan.get('summary', '')}",
+        f"- Execution plan: `{json.dumps(architect_plan.get('execution_plan', []), ensure_ascii=False)}`",
+        f"- OpenCode instruction: {architect_plan.get('opencode_instruction', '')}",
+        "",
+        "## OpenCode Plan",
+        "",
+        f"```json\n{json.dumps(opencode_plan, ensure_ascii=False, indent=2)[:8000]}\n```",
+        "",
+        "## OpenCode Build",
+        "",
+        f"```json\n{json.dumps(build, ensure_ascii=False, indent=2)[:8000]}\n```",
         "",
         "## Changed Files",
         "",
@@ -88,7 +106,11 @@ def write_markdown_report(report: dict) -> str:
         f"- Passed: {_ok(test.get('passed'))}",
         f"- Command: `{test.get('cmd', '')}`",
         "",
-        "## Tester Analyst",
+        "## Quality Gate",
+        "",
+        f"```json\n{json.dumps(quality, ensure_ascii=False, indent=2)[:8000]}\n```",
+        "",
+        "## CrewAI Tester",
         "",
         f"- Passed: {_ok(tester.get('passed')) if tester else 'N/A'}",
         f"- Failure type: {tester.get('failure_type', '')}",
@@ -111,16 +133,20 @@ def write_markdown_report(report: dict) -> str:
         f"- Passed: {_ok(quality.get('bad_patterns', {}).get('passed'))}",
         f"- Hits: `{json.dumps(quality.get('bad_patterns', {}).get('hits', []), ensure_ascii=False)}`",
         "",
-        "## Reviewer",
+        "## CrewAI Reviewer",
         "",
         f"- Passed: {_ok(review.get('passed'))}",
         f"- Score: {review.get('score', 0)}",
         f"- Blocking issues: `{json.dumps(review.get('blocking_issues', []), ensure_ascii=False)}`",
         "",
-        "## Reporter",
+        "## CrewAI Reporter",
         "",
         f"- Summary: {reporter.get('summary', '')}",
         f"- Validation summary: {reporter.get('validation_summary', '')}",
+        "",
+        "## Retry History",
+        "",
+        f"```json\n{json.dumps(retry_history, ensure_ascii=False, indent=2)[:8000]}\n```",
         "",
         "## Failure Reasons",
         "",

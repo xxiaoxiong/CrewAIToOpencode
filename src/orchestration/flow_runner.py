@@ -6,10 +6,15 @@ from typing import Any, Callable
 from src.agents.architect_agent import build_architect_plan
 from src.agents.reporter_agent import summarize_delivery
 from src.agents.tester_agent import analyze_test_failure
-from src.config_loader import get_project_config
+from src.config_loader import get_effective_pipeline, get_project_config
 from src.opencode.client import OpenCodeClient
+from src.opencode.multi_agent_runner import build as opencode_build
+from src.opencode.multi_agent_runner import explore as opencode_explore
+from src.opencode.multi_agent_runner import plan as opencode_plan_task
+from src.opencode.multi_agent_runner import repair as opencode_repair
 from src.orchestration.prompt_builder import build_initial_prompt, build_retry_prompt
 from src.orchestration.report_writer import write_json_report, write_markdown_report
+from src.orchestration.task_context import TaskContext
 from src.quality.quality_gate import run_quality_gate
 from src.reviewer.crew_reviewer import review_change
 
@@ -62,28 +67,67 @@ def _crewai_enabled(project_config: dict[str, Any], key: str | None = None) -> b
     return bool(crewai_config.get(key, True))
 
 
+def _pipeline_for_config(project_config: dict[str, Any], mode: str | None) -> dict[str, Any]:
+    if mode or "task_pipeline" in project_config:
+        return get_effective_pipeline(project_config, mode)
+    if (project_config.get("crewai", {}) or {}).get("enabled"):
+        return {
+            "explore_enabled": False,
+            "architect_enabled": True,
+            "opencode_plan_enabled": False,
+            "build_enabled": True,
+            "tester_enabled": True,
+            "reviewer_enabled": True,
+            "reporter_enabled": True,
+            "max_iterations": project_config.get("max_iterations", 3),
+            "mode": "v0.2",
+        }
+    return {
+        "explore_enabled": False,
+        "architect_enabled": False,
+        "opencode_plan_enabled": False,
+        "build_enabled": True,
+        "tester_enabled": False,
+        "reviewer_enabled": True,
+        "reporter_enabled": False,
+        "max_iterations": project_config.get("max_iterations", 3),
+        "mode": "legacy",
+    }
+
+
 def run_dev_task(
     project_id: str,
     task_text: str,
     max_iterations: int | None = None,
+    mode: str | None = None,
     progress: ProgressFn | None = None,
 ) -> dict:
     project_config = get_project_config(project_id)
-    limit = int(max_iterations or project_config.get("max_iterations", 3))
+    pipeline = _pipeline_for_config(project_config, mode)
+    limit = int(max_iterations or pipeline.get("max_iterations") or project_config.get("max_iterations", 3))
     client = OpenCodeClient.from_project_config(project_config)
+    context = TaskContext(project_id=project_id, task_text=task_text, mode=str(pipeline.get("mode", mode or "custom")))
 
     report: dict[str, Any] = {
         "project_id": project_id,
         "task": task_text,
+        "mode": context.mode,
+        "pipeline": pipeline,
         "session_id": "",
         "passed": False,
         "iterations_used": 0,
         "max_iterations": limit,
+        "explore": {},
+        "architect_plan": {},
+        "opencode_plan": {},
+        "build": {},
         "quality": {},
+        "tester": {},
+        "reviewer": {},
         "review": {},
         "plan": {},
-        "tester": {},
         "reporter": {},
+        "retry_history": [],
         "iterations": [],
     }
 
@@ -97,33 +141,66 @@ def run_dev_task(
 
         session = client.create_session(f"AI dev task: {task_text[:80]}")
         session_id = _session_id(session)
+        context.session_id = session_id
         report["session_id"] = session_id
         _emit(progress, f"session_id: {session_id}")
 
-        plan_result: dict[str, Any] = {}
-        if _crewai_enabled(project_config, "planning_enabled"):
+        explore_result: dict[str, Any] = {}
+        if pipeline.get("explore_enabled"):
+            explore_result = opencode_explore(session_id, task_text, project_config)
+            context.explore_result = explore_result
+            report["explore"] = explore_result
+            _emit(progress, "opencode explore: done")
+
+        architect_plan: dict[str, Any] = {}
+        if pipeline.get("architect_enabled"):
             repo_context = {
                 "health": health,
                 "path": current_path,
                 "vcs": vcs,
+                "explore": explore_result,
             }
-            plan_result = build_architect_plan(task_text, project_config, repo_context)
-            report["plan"] = plan_result
-            _emit(progress, f"architect: {'PASS' if plan_result.get('passed') else 'FALLBACK/FAIL'}")
+            architect_plan = build_architect_plan(task_text, project_config, repo_context)
+            context.architect_plan = architect_plan
+            report["architect_plan"] = architect_plan
+            report["plan"] = architect_plan
+            _emit(progress, f"architect: {'PASS' if architect_plan.get('passed') else 'FALLBACK/FAIL'}")
+
+        opencode_plan_result: dict[str, Any] = {}
+        if pipeline.get("opencode_plan_enabled"):
+            opencode_plan_result = opencode_plan_task(session_id, task_text, explore_result, architect_plan, project_config)
+            context.opencode_plan = opencode_plan_result
+            report["opencode_plan"] = opencode_plan_result
+            _emit(progress, "opencode plan: done")
 
         last_quality: dict[str, Any] = {}
         last_review: dict[str, Any] = {}
         last_tester: dict[str, Any] = {}
 
         for iteration in range(1, limit + 1):
+            context.iteration = iteration
             _emit(progress, f"iteration {iteration}/{limit}: sending task to OpenCode")
-            prompt = (
-                build_initial_prompt(task_text, project_config, plan_result if plan_result else None)
-                if iteration == 1
-                else build_retry_prompt(task_text, last_quality, last_review, iteration, last_tester)
-            )
-
-            send_result = client.send_message(session_id, prompt, project_config.get("opencode_agent", "build"))
+            if iteration == 1:
+                prompt = build_initial_prompt(
+                    task_text,
+                    project_config,
+                    architect_plan if architect_plan else None,
+                    explore_result=explore_result,
+                    opencode_plan=opencode_plan_result,
+                )
+                send_result = (
+                    opencode_build(session_id, prompt, project_config)
+                    if pipeline.get("build_enabled", True)
+                    else {"skipped": True, "reason": "build stage disabled"}
+                )
+                report["build"] = send_result
+                context.build_result = send_result
+                action = "build"
+            else:
+                prompt = build_retry_prompt(task_text, last_quality, last_review, iteration, last_tester)
+                send_result = opencode_repair(session_id, prompt, project_config)
+                report["retry_history"].append({"iteration": iteration, "prompt": prompt, "result": send_result})
+                action = "repair"
             _emit(progress, f"iteration {iteration}/{limit}: message sent")
             time.sleep(float(project_config.get("post_message_wait_seconds", 1)))
 
@@ -133,13 +210,15 @@ def run_dev_task(
                 opencode_diff = {"error": str(exc)}
 
             quality = run_quality_gate(project_config)
+            context.quality_result = quality
             _emit(progress, f"quality gate: {'PASS' if quality.get('passed') else 'FAIL'}")
 
             tester = (
                 analyze_test_failure(task_text, quality, project_config)
-                if _crewai_enabled(project_config, "tester_analysis_enabled")
+                if pipeline.get("tester_enabled") and quality.get("test", {}).get("passed") is False
                 else {}
             )
+            context.tester_result = tester
             if tester:
                 _emit(progress, f"tester analyst: {'PASS' if tester.get('passed') else 'ANALYZED'}")
 
@@ -149,14 +228,17 @@ def run_dev_task(
                     if _crewai_enabled(project_config, "reviewer_enabled")
                     else review_change(task_text, quality)
                 )
-                if project_config.get("reviewer_enabled", True)
+                if project_config.get("reviewer_enabled", True) and pipeline.get("reviewer_enabled", True)
                 else _disabled_review()
             )
+            context.reviewer_result = review
             _emit(progress, f"reviewer: {'PASS' if review.get('passed') else 'FAIL'}")
 
             iteration_passed = bool(quality.get("passed") and review.get("passed"))
+            context.passed = iteration_passed
             iteration_report = {
                 "iteration": iteration,
+                "action": action,
                 "send_result": send_result,
                 "opencode_diff": opencode_diff,
                 "quality_passed": quality.get("passed"),
@@ -168,6 +250,7 @@ def run_dev_task(
             report["iterations_used"] = iteration
             report["quality"] = quality
             report["tester"] = tester
+            report["reviewer"] = review
             report["review"] = review
 
             last_quality = quality
@@ -176,10 +259,6 @@ def run_dev_task(
 
             if iteration_passed:
                 report["passed"] = True
-                if _crewai_enabled(project_config, "reporter_enabled"):
-                    reporter = summarize_delivery(report, project_config)
-                    report["reporter"] = reporter
-                    _emit(progress, f"reporter: {'PASS' if reporter.get('passed') else 'FALLBACK/FAIL'}")
                 _emit(progress, "task passed")
                 break
 
@@ -188,6 +267,11 @@ def run_dev_task(
 
         if not report["passed"]:
             _emit(progress, "task failed after max iterations")
+        if pipeline.get("reporter_enabled"):
+            reporter = summarize_delivery(report, project_config)
+            context.reporter_result = reporter
+            report["reporter"] = reporter
+            _emit(progress, f"reporter: {'PASS' if reporter.get('passed') else 'FALLBACK/FAIL'}")
         return _write_reports(report)
     except Exception as exc:
         report["error"] = str(exc)

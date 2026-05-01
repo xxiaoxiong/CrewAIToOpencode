@@ -1,0 +1,283 @@
+{
+  "project_id": "demo-project",
+  "task": "Append exactly this line to README.md: v0.3 quick mode smoke test. Only modify README.md.",
+  "mode": "quick",
+  "pipeline": {
+    "explore_enabled": false,
+    "architect_enabled": false,
+    "opencode_plan_enabled": false,
+    "build_enabled": true,
+    "tester_enabled": false,
+    "reviewer_enabled": true,
+    "reporter_enabled": true,
+    "max_iterations": 3,
+    "mode": "quick"
+  },
+  "session_id": "ses_21d690575ffeHbOE8QCvIVxAJU",
+  "passed": true,
+  "iterations_used": 1,
+  "max_iterations": 1,
+  "explore": {},
+  "architect_plan": {},
+  "opencode_plan": {},
+  "build": {
+    "info": {
+      "parentID": "msg_de296fa9b001457F6kcXR0EwdJ",
+      "role": "assistant",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+        "cwd": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\demo-project",
+        "root": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\demo-project"
+      },
+      "cost": 0,
+      "tokens": {
+        "total": 14634,
+        "input": 70,
+        "output": 68,
+        "reasoning": 0,
+        "cache": {
+          "write": 0,
+          "read": 14496
+        }
+      },
+      "modelID": "minimax-m2.5-free",
+      "providerID": "opencode",
+      "time": {
+        "created": 1777623048304,
+        "completed": 1777623051105
+      },
+      "finish": "stop",
+      "id": "msg_de2972070001MTYwyRM70wM4FX",
+      "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU"
+    },
+    "parts": [
+      {
+        "snapshot": "4617986b6e910fa577e09bfcfaf85018b588e5bb",
+        "type": "step-start",
+        "id": "prt_de29726f4001v9rAjzF4xR13hh",
+        "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+        "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+      },
+      {
+        "type": "reasoning",
+        "text": "Done. Let me provide the final summary.\n",
+        "time": {
+          "start": 1777623049973,
+          "end": 1777623050027
+        },
+        "metadata": {
+          "anthropic": {
+            "signature": "d8ed3d3591e150bbd75d64a777404a6063c4927257793f2761261416bc02c151"
+          }
+        },
+        "id": "prt_de29726f5001jZGArjLOIrWTdc",
+        "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+        "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+      },
+      {
+        "type": "text",
+        "text": "\n\n**Changed files:** README.md\n\n**Rationale:** Appended exactly the requested line \"v0.3 quick mode smoke test.\" to README.md as specified in the task.\n\n**Validation:** Passed - `python -c \"print('demo tests ok')\"` executed successfully.",
+        "time": {
+          "start": 1777623050028,
+          "end": 1777623050607
+        },
+        "id": "prt_de297272c001vTdAhA2KkHI6im",
+        "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+        "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+      },
+      {
+        "reason": "stop",
+        "snapshot": "4617986b6e910fa577e09bfcfaf85018b588e5bb",
+        "type": "step-finish",
+        "tokens": {
+          "total": 14634,
+          "input": 70,
+          "output": 68,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 14496
+          }
+        },
+        "cost": 0,
+        "id": "prt_de29729ea001o2iZjqH530yjyh",
+        "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+        "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+      }
+    ]
+  },
+  "quality": {
+    "passed": true,
+    "changed_files": [
+      "README.md"
+    ],
+    "git_status": " M README.md\n",
+    "git_diff_stat": " README.md | 1 +\n 1 file changed, 1 insertion(+)\n",
+    "diff": "diff --git a/README.md b/README.md\nindex 1fa1f31..559fcb5 100644\n--- a/README.md\n+++ b/README.md\n@@ -1,3 +1,4 @@\n # Demo Project\n \n This is a minimal target repository for the CrewAIToOpencode POC.\n+v0.3 quick mode smoke test.\n",
+    "test": {
+      "enabled": true,
+      "passed": true,
+      "cmd": "python -c \"print('demo tests ok')\"",
+      "stdout": "demo tests ok\n",
+      "stderr": "",
+      "returncode": 0
+    },
+    "lint": {
+      "enabled": false,
+      "passed": true,
+      "cmd": "",
+      "stdout": "",
+      "stderr": "",
+      "returncode": 0
+    },
+    "file_policy": {
+      "passed": true,
+      "violations": []
+    },
+    "bad_patterns": {
+      "passed": true,
+      "hits": []
+    }
+  },
+  "tester": {},
+  "reviewer": {
+    "passed": true,
+    "score": 85,
+    "blocking_issues": [],
+    "non_blocking_issues": [],
+    "retry_instruction": "",
+    "raw": "heuristic reviewer fallback"
+  },
+  "review": {
+    "passed": true,
+    "score": 85,
+    "blocking_issues": [],
+    "non_blocking_issues": [],
+    "retry_instruction": "",
+    "raw": "heuristic reviewer fallback"
+  },
+  "plan": {},
+  "reporter": {
+    "passed": true,
+    "summary": "Task completed successfully.",
+    "changed_files": [
+      "README.md"
+    ],
+    "validation_summary": "Quality gate passed.",
+    "follow_up": [],
+    "raw": "Reporter Agent fallback: LLM_MODEL or crewai.llm.model is required"
+  },
+  "retry_history": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "action": "build",
+      "send_result": {
+        "info": {
+          "parentID": "msg_de296fa9b001457F6kcXR0EwdJ",
+          "role": "assistant",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\demo-project",
+            "root": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\demo-project"
+          },
+          "cost": 0,
+          "tokens": {
+            "total": 14634,
+            "input": 70,
+            "output": 68,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 14496
+            }
+          },
+          "modelID": "minimax-m2.5-free",
+          "providerID": "opencode",
+          "time": {
+            "created": 1777623048304,
+            "completed": 1777623051105
+          },
+          "finish": "stop",
+          "id": "msg_de2972070001MTYwyRM70wM4FX",
+          "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU"
+        },
+        "parts": [
+          {
+            "snapshot": "4617986b6e910fa577e09bfcfaf85018b588e5bb",
+            "type": "step-start",
+            "id": "prt_de29726f4001v9rAjzF4xR13hh",
+            "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+            "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+          },
+          {
+            "type": "reasoning",
+            "text": "Done. Let me provide the final summary.\n",
+            "time": {
+              "start": 1777623049973,
+              "end": 1777623050027
+            },
+            "metadata": {
+              "anthropic": {
+                "signature": "d8ed3d3591e150bbd75d64a777404a6063c4927257793f2761261416bc02c151"
+              }
+            },
+            "id": "prt_de29726f5001jZGArjLOIrWTdc",
+            "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+            "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+          },
+          {
+            "type": "text",
+            "text": "\n\n**Changed files:** README.md\n\n**Rationale:** Appended exactly the requested line \"v0.3 quick mode smoke test.\" to README.md as specified in the task.\n\n**Validation:** Passed - `python -c \"print('demo tests ok')\"` executed successfully.",
+            "time": {
+              "start": 1777623050028,
+              "end": 1777623050607
+            },
+            "id": "prt_de297272c001vTdAhA2KkHI6im",
+            "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+            "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+          },
+          {
+            "reason": "stop",
+            "snapshot": "4617986b6e910fa577e09bfcfaf85018b588e5bb",
+            "type": "step-finish",
+            "tokens": {
+              "total": 14634,
+              "input": 70,
+              "output": 68,
+              "reasoning": 0,
+              "cache": {
+                "write": 0,
+                "read": 14496
+              }
+            },
+            "cost": 0,
+            "id": "prt_de29729ea001o2iZjqH530yjyh",
+            "sessionID": "ses_21d690575ffeHbOE8QCvIVxAJU",
+            "messageID": "msg_de2972070001MTYwyRM70wM4FX"
+          }
+        ]
+      },
+      "opencode_diff": {
+        "data": [
+          {
+            "file": "README.md",
+            "patch": "Index: README.md\n===================================================================\n--- README.md\t\n+++ README.md\t\n@@ -1,3 +1,4 @@\n # Demo Project\n \n This is a minimal target repository for the CrewAIToOpencode POC.\n+v0.3 quick mode smoke test.\n",
+            "additions": 1,
+            "deletions": 0,
+            "status": "modified"
+          }
+        ]
+      },
+      "quality_passed": true,
+      "tester": {},
+      "review_passed": true,
+      "passed": true
+    }
+  ],
+  "_report_basename": "report-20260501-161054",
+  "report_md": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\reports\\report-20260501-161054.md",
+  "report_json": "E:\\@@MyStudyFiles\\AI\\MyCode\\CrewAIToOpencode\\reports\\report-20260501-161054.json"
+}
