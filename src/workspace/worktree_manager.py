@@ -21,8 +21,26 @@ def create_worktree(repo_path: str, worktree_base: str, branch_name: str) -> str
 
 
 def remove_worktree(worktree_path: str) -> None:
+    path = Path(worktree_path).resolve()
+    common_git_dir = subprocess.run(
+        ["git", "-C", str(path), "rev-parse", "--git-common-dir"],
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    command = ["git", "worktree", "remove", str(path)]
+    if common_git_dir.returncode == 0 and common_git_dir.stdout.strip():
+        command = [
+            "git",
+            "--git-dir",
+            common_git_dir.stdout.strip(),
+            "worktree",
+            "remove",
+            str(path),
+        ]
+
     completed = subprocess.run(
-        ["git", "worktree", "remove", str(Path(worktree_path))],
+        command,
         text=True,
         capture_output=True,
         timeout=120,
