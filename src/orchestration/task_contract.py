@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.orchestration.context_compactor import compact_text, sanitize_stage_payload
+from src.orchestration.stage_artifacts import compact_text, sanitize_stage_value
 
 
 CONTRACT_KEYS = [
@@ -43,8 +43,26 @@ def _dedupe(values: list[str], limit: int = 20) -> list[str]:
 def _infer_task_type(task_text: str, repo_summary: dict[str, Any]) -> str:
     lowered = task_text.lower()
     project_type = str(repo_summary.get("project_type", "")).lower()
-    creation_terms = ["create", "build", "scaffold", "from scratch", "new project", "创建", "新建", "搭建"]
-    frontend_terms = ["frontend", "react", "vite", "website", "web app", "页面", "前端"]
+    creation_terms = [
+        "create",
+        "build",
+        "scaffold",
+        "from scratch",
+        "new project",
+        "创建",
+        "新建",
+        "搭建",
+    ]
+    frontend_terms = [
+        "frontend",
+        "front-end",
+        "react",
+        "vite",
+        "website",
+        "web app",
+        "页面",
+        "前端",
+    ]
     if any(term in lowered for term in creation_terms) and (
         any(term in lowered for term in frontend_terms) or "frontend" in project_type or "javascript" in project_type
     ):
@@ -96,9 +114,9 @@ def build_task_contract(
     architect_plan: dict[str, Any] | None = None,
     opencode_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    repo_summary = sanitize_stage_payload(repo_summary or {})
-    architect_plan = sanitize_stage_payload(architect_plan or {})
-    opencode_plan = sanitize_stage_payload(opencode_plan or {})
+    repo_summary = sanitize_stage_value(repo_summary or {})
+    architect_plan = sanitize_stage_value(architect_plan or {})
+    opencode_plan = sanitize_stage_value(opencode_plan or {})
     task_type = _infer_task_type(task_text, repo_summary)
     validation_commands = _validation_commands(project_config)
 
@@ -111,15 +129,15 @@ def build_task_contract(
     ]
     if task_type == "frontend_project_creation":
         acceptance.append("A real runnable frontend project is created; README-only output is not sufficient.")
-    if (architect_plan or {}).get("summary"):
-        acceptance.append(f"Architect summary: {str((architect_plan or {}).get('summary'))[:300]}")
-    if (architect_plan or {}).get("opencode_instruction"):
-        acceptance.append(f"Architect instruction: {str((architect_plan or {}).get('opencode_instruction'))[:300]}")
-    if (opencode_plan or {}).get("summary"):
-        acceptance.append(f"OpenCode plan summary: {str((opencode_plan or {}).get('summary'))[:300]}")
-    for item in _string_list((architect_plan or {}).get("execution_plan"), limit=4):
+    if architect_plan.get("summary"):
+        acceptance.append(f"Architect summary: {str(architect_plan.get('summary'))[:300]}")
+    if architect_plan.get("opencode_instruction"):
+        acceptance.append(f"Architect instruction: {str(architect_plan.get('opencode_instruction'))[:300]}")
+    if opencode_plan.get("summary"):
+        acceptance.append(f"OpenCode plan summary: {str(opencode_plan.get('summary'))[:300]}")
+    for item in _string_list(architect_plan.get("execution_plan"), limit=4):
         acceptance.append(f"Architect guidance considered: {item}")
-    for item in _string_list((opencode_plan or {}).get("execution_plan"), limit=4):
+    for item in _string_list(opencode_plan.get("implementation_steps") or opencode_plan.get("execution_plan"), limit=4):
         acceptance.append(f"OpenCode plan guidance considered: {item}")
 
     contract = {
@@ -140,7 +158,7 @@ def build_task_contract(
 
 
 def compact_task_contract(contract: dict[str, Any] | None) -> dict[str, Any]:
-    source = sanitize_stage_payload(contract or {})
+    source = sanitize_stage_value(contract or {})
     return {
         "task_type": str(source.get("task_type", "implementation") or "implementation"),
         "goal": compact_text(str(source.get("goal", "") or ""), max_chars=1000),

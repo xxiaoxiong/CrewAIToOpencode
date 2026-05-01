@@ -58,10 +58,10 @@ DEFAULT_OPENCODE_TIMEOUTS: dict[str, int] = {
 }
 
 DEFAULT_PROMPT_LIMITS: dict[str, int] = {
-    "build_max_chars": 12000,
-    "retry_max_chars": 8000,
-    "plan_max_chars": 8000,
-    "section_max_chars": 2500,
+    "build_max_chars": 6000,
+    "retry_max_chars": 4000,
+    "plan_max_chars": 5000,
+    "section_max_chars": 1800,
 }
 
 DEFAULT_TASK_PIPELINE: dict[str, Any] = {
@@ -96,6 +96,15 @@ DEFAULT_MODES: dict[str, dict[str, Any]] = {
         "reporter_enabled": True,
     },
     "full": {
+        "explore_enabled": True,
+        "architect_enabled": True,
+        "opencode_plan_enabled": True,
+        "tester_enabled": True,
+        "validator_enabled": True,
+        "reviewer_enabled": True,
+        "reporter_enabled": True,
+    },
+    "deep": {
         "explore_enabled": True,
         "architect_enabled": True,
         "opencode_plan_enabled": True,
@@ -140,6 +149,7 @@ def get_project_config(project_id: str) -> dict[str, Any]:
     config["id"] = project_id
     config["repo_path"] = _resolve_repo_path(config.get("repo_path"))
     config["denied_paths"] = config.get("denied_paths") or list(DEFAULT_DENIED_PATHS)
+    config.setdefault("allowed_write_paths", [])
     config.setdefault("max_iterations", 3)
     config.setdefault("reviewer_enabled", True)
     config.setdefault("lint_enabled", False)

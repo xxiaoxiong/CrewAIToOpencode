@@ -1,36 +1,30 @@
-import json
-
 from src.orchestration.prompt_builder import build_initial_prompt
 
 
-def test_build_initial_prompt_compacts_raw_opencode_response():
-    raw_response = {
-        "info": {"kind": "message"},
-        "sessionID": "ses_123",
-        "messageID": "msg_123",
-        "parentID": "parent_123",
-        "tokens": {"input": 2000},
-        "cache": {"hit": True, "blob": "x" * 5000},
-        "parts": [
-            {"type": "snapshot", "text": "ignore snapshot"},
-            {"type": "text", "text": "Explore summary\nRelevant file: src/App.jsx\nRisk: keep scope focused"},
-        ],
+def test_build_initial_prompt_uses_explore_artifact_not_raw_response():
+    explore_artifact = {
+        "stage": "explore",
+        "summary": "Explore summary",
+        "repo_summary": "Explore summary",
+        "project_type": "frontend/javascript",
+        "existing_files": [],
+        "relevant_files": ["src/App.jsx"],
+        "risks": ["keep scope focused"],
+        "suggested_scope": ["edit app"],
+        "raw_text_truncated": "Explore summary",
     }
 
     prompt = build_initial_prompt(
         "build the app",
         {"denied_paths": [".env"], "prompt_limits": {"section_max_chars": 500}},
-        explore_result=raw_response,
+        explore_result=explore_artifact,
     )
-    raw_json = json.dumps(raw_response, ensure_ascii=False)
 
-    assert "[OpenCode Explore Summary]" in prompt
     assert "[Task Contract]" in prompt
-    assert "[Repository Fact Summary]" in prompt
+    assert "[Repository Facts]" in prompt
     assert '"task_type":' in prompt
     assert '"acceptance_criteria":' in prompt
     assert "Explore summary" in prompt
-    assert len(prompt) < len(raw_json) + 1200
     for forbidden in ["tokens", "cache", "sessionID", "messageID", "parts", "snapshot", "parentID", "raw_response"]:
         assert forbidden not in prompt
 

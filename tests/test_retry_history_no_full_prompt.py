@@ -18,7 +18,7 @@ class FakeClient:
         return {"data": []}
 
 
-def test_retry_history_keeps_prompt_summary_not_full_prompt(monkeypatch):
+def test_retry_history_keeps_compact_fields_not_full_prompt(monkeypatch):
     config = {
         "id": "demo-project",
         "repo_path": ".",
@@ -38,7 +38,7 @@ def test_retry_history_keeps_prompt_summary_not_full_prompt(monkeypatch):
         },
         "modes": {},
         "crewai": {"enabled": False},
-        "prompt_limits": {"build_max_chars": 12000, "retry_max_chars": 8000},
+        "prompt_limits": {"build_max_chars": 6000, "retry_max_chars": 4000},
     }
     monkeypatch.setattr(flow_runner, "get_project_config", lambda project_id: config)
     monkeypatch.setattr(flow_runner.OpenCodeClient, "from_project_config", lambda config: FakeClient())
@@ -72,6 +72,8 @@ def test_retry_history_keeps_prompt_summary_not_full_prompt(monkeypatch):
     report = flow_runner.run_dev_task("demo-project", "task")
 
     assert report["passed"] is True
-    assert "prompt" not in report["retry_history"][0]
-    assert "prompt_summary" in report["retry_history"][0]
-    assert isinstance(report["retry_history"][0]["prompt_chars"], int)
+    entry = report["retry_history"][0]
+    assert set(entry) == {"iteration", "failed_criteria", "blocking_issues", "retry_instruction", "prompt_chars", "result_summary"}
+    assert "prompt" not in entry
+    assert "prompt_summary" not in entry
+    assert isinstance(entry["prompt_chars"], int)

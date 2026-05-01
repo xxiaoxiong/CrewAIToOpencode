@@ -177,6 +177,6 @@ def test_flow_runner_repairs_when_validator_fails(monkeypatch):
     assert calls["build"] == 1
     assert calls["repair"] == 1
     assert "prompt" not in report["retry_history"][0]
-    assert "prompt_summary" in report["retry_history"][0]
+    assert "prompt_summary" not in report["retry_history"][0]
     assert "prompt_chars" in report["retry_history"][0]
-    assert "expand" in report["retry_history"][0]["prompt_summary"]
+    assert "expand" in report["retry_history"][0]["retry_instruction"]

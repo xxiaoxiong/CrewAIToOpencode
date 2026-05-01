@@ -12,7 +12,9 @@ PATH_PATTERN = re.compile(
 
 RESPONSE_METADATA_KEYS = {
     "cache",
+    "info",
     "messageID",
+    "metadata",
     "parentID",
     "parts",
     "raw_response",
@@ -21,7 +23,7 @@ RESPONSE_METADATA_KEYS = {
     "tokens",
 }
 
-REPORT_EXCLUDED_KEYS = {*RESPONSE_METADATA_KEYS, "prompt", "raw", "raw_text_truncated"}
+REPORT_EXCLUDED_KEYS = {*RESPONSE_METADATA_KEYS, "prompt", "raw", "prompt_summary"}
 
 
 def extract_opencode_text(response: dict) -> str:
@@ -195,14 +197,12 @@ def compact_explore_result(response: dict, max_chars: int = 2500) -> dict:
     parsed = _parse_json_text(text)
     repo_facts = repo_fact_summary_from_explore(response, max_chars=max_chars)
     return {
-        "agent": "explore",
-        "raw_response_kept": False,
-        "compact": True,
+        "stage": "explore",
         "summary": repo_facts["repo_summary"],
         **repo_facts,
         "relevant_files": _coerce_string_list(parsed.get("relevant_files")) or _extract_paths(text),
         "risks": _coerce_string_list(parsed.get("risks")),
-        "test_hints": _coerce_string_list(parsed.get("test_hints")),
+        "suggested_scope": _coerce_string_list(parsed.get("suggested_scope")) or _coerce_string_list(parsed.get("test_hints")),
         "raw_text_truncated": text,
     }
 
@@ -211,11 +211,11 @@ def compact_plan_result(response: dict, max_chars: int = 2500) -> dict:
     text = compact_text(extract_opencode_text(response), max_chars=max_chars)
     parsed = _parse_json_text(text)
     return {
-        "agent": "plan",
-        "raw_response_kept": False,
-        "compact": True,
+        "stage": "plan",
         "summary": str(parsed.get("summary") or _summary_from_text(text))[:600],
-        "execution_plan": _coerce_string_list(parsed.get("execution_plan")) or _extract_action_lines(text),
+        "implementation_steps": _coerce_string_list(parsed.get("implementation_steps")) or _coerce_string_list(parsed.get("execution_plan")) or _extract_action_lines(text),
+        "acceptance_notes": _coerce_string_list(parsed.get("acceptance_notes")),
+        "risks": _coerce_string_list(parsed.get("risks")),
         "raw_text_truncated": text,
     }
 
@@ -224,10 +224,9 @@ def compact_build_result(response: dict, max_chars: int = 2000) -> dict:
     text = compact_text(extract_opencode_text(response), max_chars=max_chars)
     parsed = _parse_json_text(text)
     return {
-        "agent": "build",
-        "raw_response_kept": False,
-        "compact": True,
+        "stage": "build",
         "summary": str(parsed.get("summary") or _summary_from_text(text))[:600],
+        "changed_files_hint": _coerce_string_list(parsed.get("changed_files_hint")) or _extract_paths(text),
         "raw_text_truncated": text,
     }
 
@@ -237,19 +236,17 @@ def compact_validator_result(response: dict, max_chars: int = 2500) -> dict:
     parsed = parse_json_object(text, {})
     if parsed:
         result = sanitize_stage_payload(dict(parsed))
-        result["raw_response_kept"] = False
-        result["compact"] = True
+        result["stage"] = "validate"
         result["raw_text_truncated"] = text
         return result
     return {
+        "stage": "validate",
         "passed": False,
         "score": 0,
-        "summary": "Validator did not return valid JSON.",
+        "criteria_results": [],
+        "missing_files": [],
         "blocking_issues": ["Validator output was not valid JSON."],
-        "non_blocking_issues": [],
         "retry_instruction": "Re-check the task against the diff and return strict JSON validation.",
-        "raw_response_kept": False,
-        "compact": True,
         "raw_text_truncated": text,
     }
 

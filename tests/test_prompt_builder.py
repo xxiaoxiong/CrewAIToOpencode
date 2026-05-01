@@ -13,8 +13,8 @@ def test_build_initial_prompt_contains_required_sections():
 
     assert "[Task Goal]" in prompt
     assert "Only modify these allowed paths" not in prompt
-    assert "Create or modify any project files needed" in prompt
-    assert "Never modify these denied paths" in prompt
+    assert "Create or modify the files needed" in prompt
+    assert "Do not modify denied paths" in prompt
     assert "npm test" in prompt
     assert "Do not delete, skip, weaken, or bypass tests" in prompt
 
@@ -30,23 +30,23 @@ def test_build_initial_prompt_accepts_plan_result():
         },
     )
 
-    assert "[Architect Plan]" in prompt
+    assert "[Implementation Plan]" in prompt
     assert "plan summary" in prompt
     assert "Use a small README edit." in prompt
 
 
-def test_build_initial_prompt_contains_explore_and_opencode_plan():
+def test_build_initial_prompt_contains_explore_artifact_and_plan_artifact():
     prompt = build_initial_prompt(
         "test task",
         {"allowed_write_paths": ["README.md"], "denied_paths": [], "test_command": "pytest"},
         {"summary": "architect"},
-        explore_result={"summary": "explore found README"},
-        opencode_plan={"summary": "opencode plan"},
+        explore_result={"stage": "explore", "summary": "explore found README", "repo_summary": "explore found README"},
+        opencode_plan={"stage": "plan", "summary": "opencode plan", "implementation_steps": ["edit README"]},
     )
 
-    assert "[OpenCode Explore Summary]" in prompt
+    assert "[Repository Facts]" in prompt
     assert "explore found README" in prompt
-    assert "[OpenCode Plan Summary]" in prompt
+    assert "[Implementation Plan]" in prompt
     assert "opencode plan" in prompt
 
 
@@ -59,7 +59,6 @@ def test_build_retry_prompt_contains_failure_context():
     )
 
     assert "[Original Task]" in prompt
-    assert "2" in prompt
     assert "failed" in prompt
     assert "bug" in prompt
 
@@ -73,8 +72,6 @@ def test_build_retry_prompt_contains_tester_analysis():
         {"failure_type": "code_issue", "retry_instruction": "fix assertion"},
     )
 
-    assert "[Tester Analyst]" in prompt
-    assert "code_issue" in prompt
     assert "fix assertion" in prompt
 
 

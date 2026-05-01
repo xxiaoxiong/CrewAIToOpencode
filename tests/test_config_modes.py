@@ -16,6 +16,7 @@ def test_quick_standard_full_mode_pipeline_merge():
     quick = get_effective_pipeline(config, "quick")
     standard = get_effective_pipeline(config, "standard")
     full = get_effective_pipeline(config, "full")
+    deep = get_effective_pipeline(config, "deep")
 
     assert quick["explore_enabled"] is False
     assert quick["architect_enabled"] is False
@@ -25,8 +26,9 @@ def test_quick_standard_full_mode_pipeline_merge():
     assert full["explore_enabled"] is True
     assert full["architect_enabled"] is True
     assert full["opencode_plan_enabled"] is True
+    assert deep["opencode_plan_enabled"] is True
     assert full["max_iterations"] == 3
     assert config["opencode_timeouts"]["default"] == 600
     assert config["opencode_timeouts"]["build"] == 900
-    assert config["prompt_limits"]["build_max_chars"] == 12000
-    assert config["prompt_limits"]["section_max_chars"] == 2500
+    assert config["prompt_limits"]["build_max_chars"] == 6000
+    assert config["prompt_limits"]["section_max_chars"] == 1800

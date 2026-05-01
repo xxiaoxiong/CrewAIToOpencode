@@ -135,7 +135,7 @@ def capabilities(project_id: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run an OpenCode-backed AI development task.")
     parser.add_argument("--project", default="demo-project", help="Project ID from config/projects.yaml")
-    parser.add_argument("--mode", choices=["quick", "standard", "full"], help="Personal local task pipeline mode")
+    parser.add_argument("--mode", choices=["quick", "standard", "deep", "full"], help="Personal local task pipeline mode")
     parser.add_argument("--task", help="Task text")
     parser.add_argument("--task-file", help="Path to a UTF-8 task file")
     parser.add_argument("--max-iterations", type=int, help="Maximum retry iterations")

@@ -12,6 +12,15 @@ def _env_or_config(env_name: str, config: dict[str, Any], key: str, default: str
     return "" if configured is None else str(configured)
 
 
+def _first_env_or_config(env_names: list[str], config: dict[str, Any], key: str, default: str = "") -> str:
+    for env_name in env_names:
+        value = os.getenv(env_name)
+        if value is not None:
+            return value
+    configured = config.get(key, default)
+    return "" if configured is None else str(configured)
+
+
 def get_llm_settings(project_config: dict[str, Any]) -> dict[str, Any]:
     crewai_config = project_config.get("crewai", {}) or {}
     llm_config = crewai_config.get("llm", {}) or {}
@@ -22,9 +31,9 @@ def get_llm_settings(project_config: dict[str, Any]) -> dict[str, Any]:
         temperature_value = 0
 
     return {
-        "model": _env_or_config("LLM_MODEL", llm_config, "model", ""),
-        "base_url": _env_or_config("LLM_BASE_URL", llm_config, "base_url", ""),
-        "api_key": _env_or_config("LLM_API_KEY", llm_config, "api_key", ""),
+        "model": _first_env_or_config(["LLM_MODEL", "CLAUDE_MODEL"], llm_config, "model", ""),
+        "base_url": _first_env_or_config(["LLM_BASE_URL", "CLAUDE_BASE_URL"], llm_config, "base_url", ""),
+        "api_key": _first_env_or_config(["LLM_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_API_KEY"], llm_config, "api_key", ""),
         "temperature": temperature_value,
     }
 
@@ -38,6 +47,8 @@ def create_llm(project_config: dict[str, Any]):
     settings = get_llm_settings(project_config)
     if not settings["model"]:
         raise RuntimeError("LLM_MODEL or crewai.llm.model is required")
+    if not settings["api_key"]:
+        raise RuntimeError("LLM_API_KEY, CLAUDE_API_KEY, ANTHROPIC_API_KEY, or crewai.llm.api_key is required")
 
     kwargs: dict[str, Any] = {
         "model": settings["model"],

@@ -37,5 +37,5 @@ def test_html_response_has_clear_api_route_error():
     client = OpenCodeClient("http://opencode.test")
     client.session = RecordingSession(_response("<html></html>", "text/html"))
 
-    with pytest.raises(OpenCodeError, match="OpenCode returned HTML, likely hit web frontend route instead of API route"):
+    with pytest.raises(OpenCodeError, match="OpenCode returned HTML, likely hit the web frontend route instead of API route"):
         client.send_message("ses", "hello")

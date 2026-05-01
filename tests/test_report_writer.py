@@ -93,7 +93,7 @@ def test_json_report_strips_prompts_and_opencode_metadata(tmp_path, monkeypatch)
             "parts": [{"type": "text", "text": "raw"}],
             "raw_text_truncated": "raw text",
         },
-        "retry_history": [{"iteration": 2, "prompt": "full prompt", "prompt_summary": "short"}],
+        "retry_history": [{"iteration": 2, "prompt": "full prompt", "prompt_chars": 100, "result_summary": "short"}],
         "quality": {},
         "review": {},
         "validator": {},
@@ -102,6 +102,7 @@ def test_json_report_strips_prompts_and_opencode_metadata(tmp_path, monkeypatch)
     json_path = write_json_report(report)
     text = Path(json_path).read_text(encoding="utf-8")
 
-    assert "prompt_summary" in text
-    for forbidden in ["sessionID", "tokens", "parts", "raw_text_truncated", "full prompt"]:
+    assert "result_summary" in text
+    assert "raw_text_truncated" in text
+    for forbidden in ["sessionID", "tokens", "parts", "prompt_summary", "full prompt"]:
         assert forbidden not in text

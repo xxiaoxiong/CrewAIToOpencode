@@ -25,10 +25,10 @@ projects:
       repair: 900
       validate: 300
     prompt_limits:
-      build_max_chars: 12000
-      retry_max_chars: 8000
-      plan_max_chars: 8000
-      section_max_chars: 2500
+      build_max_chars: 6000
+      retry_max_chars: 4000
+      plan_max_chars: 5000
+      section_max_chars: 1800
 
     test_command: "npm test"
     lint_command: ""
@@ -83,17 +83,25 @@ projects:
         validator_enabled: true
         reviewer_enabled: true
         reporter_enabled: true
+      deep:
+        explore_enabled: true
+        architect_enabled: true
+        opencode_plan_enabled: true
+        tester_enabled: true
+        validator_enabled: true
+        reviewer_enabled: true
+        reporter_enabled: true
 
     crewai:
-      enabled: false
+      enabled: true
       mode: "hybrid_planning_review"
       planning_enabled: true
       tester_analysis_enabled: true
       reviewer_enabled: true
       reporter_enabled: true
       llm:
-        model: ""
-        base_url: ""
+        model: "claude-sonnet-4.6-thinking"
+        base_url: "https://yunyi.rdzhvip.com/claude"
         api_key: ""
         temperature: 0
       agents:

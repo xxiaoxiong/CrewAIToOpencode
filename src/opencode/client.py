@@ -73,6 +73,15 @@ class OpenCodeClient:
                 errors.append(f"{method} {path}: {exc}")
                 continue
 
+            if _is_html_fallback(response):
+                message = (
+                    f"{method} {path}: OpenCode returned HTML, likely hit the web frontend route instead of API route."
+                )
+                if len(candidates) > 1:
+                    errors.append(message)
+                    continue
+                raise OpenCodeError(message)
+
             if response.status_code == 404 and len(candidates) > 1:
                 errors.append(f"{method} {path}: 404")
                 continue
@@ -86,13 +95,6 @@ class OpenCodeClient:
             try:
                 payload = response.json()
             except ValueError:
-                if _is_html_fallback(response):
-                    errors.append(
-                        f"{method} {path}: OpenCode returned HTML, likely hit web frontend route instead of API route."
-                    )
-                    if len(candidates) > 1:
-                        continue
-                    raise OpenCodeError(errors[-1])
                 return {"raw": response.text}
             return payload if isinstance(payload, dict) else {"data": payload}
 

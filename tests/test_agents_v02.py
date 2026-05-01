@@ -176,8 +176,8 @@ def test_flow_runner_crewai_enabled_adds_plan_and_tester_retry(monkeypatch):
     report = flow_runner.run_dev_task("demo-project", "task")
 
     assert report["passed"] is True
-    assert "[Architect Plan]" in client.sent_prompts[0]
+    assert "[Implementation Plan]" in client.sent_prompts[0]
     assert "Use the architect instruction." in client.sent_prompts[0]
-    assert "[Tester Analyst]" in client.sent_prompts[1]
-    assert "fix assertion" in client.sent_prompts[1]
+    assert "[Validator / Reviewer Blocking Issues]" in client.sent_prompts[1]
+    assert "assertion mismatch" in client.sent_prompts[1]
     assert report["reporter"]["summary"] == "done"

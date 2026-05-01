@@ -14,13 +14,11 @@ from src.opencode.multi_agent_runner import plan as opencode_plan_task
 from src.opencode.multi_agent_runner import repair as opencode_repair
 from src.opencode.multi_agent_runner import validate as opencode_validate
 from src.orchestration.context_compactor import (
-    prompt_summary,
-    repo_fact_summary_from_explore,
     report_safe_payload,
-    sanitize_stage_payload,
 )
 from src.orchestration.prompt_builder import build_initial_prompt, build_retry_prompt
 from src.orchestration.report_writer import write_json_report, write_markdown_report
+from src.orchestration.stage_artifacts import make_review_artifact, repo_facts_from_artifact
 from src.orchestration.task_contract import build_task_contract
 from src.orchestration.task_context import TaskContext
 from src.quality.quality_gate import run_quality_gate
@@ -51,12 +49,26 @@ def _session_id(payload: dict[str, Any]) -> str:
 
 def _disabled_review() -> dict[str, Any]:
     return {
+        "stage": "review",
         "passed": True,
         "score": 100,
         "blocking_issues": [],
         "non_blocking_issues": [],
         "retry_instruction": "",
-        "raw": "reviewer disabled",
+        "raw_text_truncated": "reviewer disabled",
+    }
+
+
+def _disabled_validation() -> dict[str, Any]:
+    return {
+        "stage": "validate",
+        "passed": True,
+        "score": 100,
+        "criteria_results": [],
+        "missing_files": [],
+        "blocking_issues": [],
+        "retry_instruction": "",
+        "raw_text_truncated": "validator disabled",
     }
 
 
@@ -94,6 +106,21 @@ def _prompt_limit(project_config: dict[str, Any], key: str, default: int) -> int
 def _assert_prompt_size(prompt: str, limit: int, stage: str) -> None:
     if len(prompt) > limit:
         raise ValueError(f"{stage} prompt is {len(prompt)} chars, above limit {limit}; compact context before sending.")
+
+
+def _failed_criteria(validator: dict[str, Any]) -> list[str]:
+    failed: list[str] = []
+    for item in validator.get("criteria_results", []) or []:
+        if isinstance(item, dict) and item.get("passed") is False:
+            failed.append(str(item.get("criterion", "")))
+    failed.extend(str(item) for item in validator.get("missing_files", []) or [])
+    return [item for item in failed if item]
+
+
+def _blocking_issues(validator: dict[str, Any], review: dict[str, Any]) -> list[str]:
+    issues = [str(item) for item in validator.get("blocking_issues", []) or []]
+    issues.extend(str(item) for item in review.get("blocking_issues", []) or [])
+    return list(dict.fromkeys(item for item in issues if item))
 
 
 def _crewai_enabled(project_config: dict[str, Any], key: str | None = None) -> bool:
@@ -193,15 +220,15 @@ def run_dev_task(
         _emit(progress, f"session_id: {session_id}")
 
         explore_result: dict[str, Any] = {}
-        repo_summary: dict[str, Any] = repo_fact_summary_from_explore({}, _prompt_limit(project_config, "section_max_chars", 2500))
+        repo_summary: dict[str, Any] = repo_facts_from_artifact({}, _prompt_limit(project_config, "section_max_chars", 1800))
         if pipeline.get("explore_enabled"):
             current_stage = "explore"
             explore_result = opencode_explore(session_id, task_text, project_config)
             context.explore_result = explore_result
             report["explore"] = explore_result
-            repo_summary = repo_fact_summary_from_explore(
+            repo_summary = repo_facts_from_artifact(
                 explore_result,
-                _prompt_limit(project_config, "section_max_chars", 2500),
+                _prompt_limit(project_config, "section_max_chars", 1800),
             )
             context.repo_summary = repo_summary
             report["repo_summary"] = repo_summary
@@ -268,11 +295,11 @@ def run_dev_task(
                 )
                 report["prompt_metrics"]["build_prompt_chars"] = len(prompt)
                 _emit(progress, f"build prompt chars: {len(prompt)}")
-                _assert_prompt_size(prompt, _prompt_limit(project_config, "build_max_chars", 12000), "build")
+                _assert_prompt_size(prompt, _prompt_limit(project_config, "build_max_chars", 6000), "build")
                 send_result = (
                     opencode_build(session_id, prompt, project_config)
                     if pipeline.get("build_enabled", True)
-                    else {"skipped": True, "reason": "build stage disabled"}
+                    else {"stage": "build", "summary": "build stage disabled", "changed_files_hint": [], "raw_text_truncated": ""}
                 )
                 report["build"] = send_result
                 context.build_result = send_result
@@ -290,24 +317,25 @@ def run_dev_task(
                 )
                 report["prompt_metrics"]["retry_prompt_chars"] = len(prompt)
                 _emit(progress, f"retry prompt chars: {len(prompt)}")
-                _assert_prompt_size(prompt, _prompt_limit(project_config, "retry_max_chars", 8000), "retry")
+                _assert_prompt_size(prompt, _prompt_limit(project_config, "retry_max_chars", 4000), "retry")
                 send_result = opencode_repair(session_id, prompt, project_config)
                 report["retry_history"].append(
                     {
                         "iteration": iteration,
-                        "prompt_summary": prompt_summary(prompt),
+                        "failed_criteria": _failed_criteria(last_validator),
+                        "blocking_issues": _blocking_issues(last_validator, last_review),
+                        "retry_instruction": (
+                            last_validator.get("retry_instruction")
+                            or last_review.get("retry_instruction")
+                            or "Fix the listed blocking issues and rerun validation."
+                        ),
                         "prompt_chars": len(prompt),
-                        "result": sanitize_stage_payload(send_result),
+                        "result_summary": str(send_result.get("summary", "")),
                     }
                 )
                 action = "repair"
             _emit(progress, f"iteration {iteration}/{limit}: message sent")
             time.sleep(float(project_config.get("post_message_wait_seconds", 1)))
-
-            try:
-                opencode_diff = client.get_diff(session_id)
-            except Exception as exc:
-                opencode_diff = {"error": str(exc)}
 
             current_stage = "quality_gate"
             quality = run_quality_gate(project_config, task_text)
@@ -327,13 +355,13 @@ def run_dev_task(
             validator = (
                 opencode_validate(session_id, task_contract, quality, project_config, repo_summary)
                 if pipeline.get("validator_enabled", True)
-                else {"passed": True, "summary": "validator disabled", "blocking_issues": []}
+                else _disabled_validation()
             )
             context.validator_result = validator
             _emit(progress, f"validator: {'PASS' if validator.get('passed') else 'FAIL'}")
 
             current_stage = "reviewer"
-            review = (
+            review_raw = (
                 (
                     review_change(task_contract, quality, project_config)
                     if _crewai_enabled(project_config, "reviewer_enabled")
@@ -342,6 +370,7 @@ def run_dev_task(
                 if project_config.get("reviewer_enabled", True) and pipeline.get("reviewer_enabled", True)
                 else _disabled_review()
             )
+            review = make_review_artifact(review_raw)
             context.reviewer_result = review
             _emit(progress, f"reviewer: {'PASS' if review.get('passed') else 'FAIL'}")
 
@@ -351,7 +380,6 @@ def run_dev_task(
                 "iteration": iteration,
                 "action": action,
                 "send_result": send_result,
-                "opencode_diff": opencode_diff,
                 "quality_passed": quality.get("passed"),
                 "tester": tester,
                 "validator": validator,
@@ -393,12 +421,13 @@ def run_dev_task(
         report["error"] = str(exc)
         report["failed_stage"] = current_stage
         report["review"] = report.get("review") or {
+            "stage": "review",
             "passed": False,
             "score": 0,
             "blocking_issues": [str(exc)],
             "non_blocking_issues": [],
             "retry_instruction": "Fix the OpenCode or orchestration error and rerun the task.",
-            "raw": "flow exception",
+            "raw_text_truncated": "flow exception",
         }
         _emit(progress, f"flow failed: {exc}")
         return _write_reports(report_safe_payload(report))

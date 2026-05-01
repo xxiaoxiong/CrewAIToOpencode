@@ -30,8 +30,7 @@ def test_multi_agent_runner_returns_compact_stage_results(monkeypatch):
 
     for result in [explore, plan, build]:
         payload = json.dumps(result, ensure_ascii=False)
-        assert result["compact"] is True
-        assert result["raw_response_kept"] is False
+        assert result["stage"] in {"explore", "plan", "build"}
         for forbidden in ["tokens", "cache", "sessionID", "messageID", "parts", "info"]:
             assert forbidden not in payload
 

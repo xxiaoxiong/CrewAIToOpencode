@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from src.orchestration.context_compactor import compact_text, repo_fact_summary_from_explore, sanitize_stage_payload
+from src.orchestration.stage_artifacts import compact_text, repo_facts_from_artifact, sanitize_stage_value
 from src.orchestration.task_contract import build_task_contract, compact_task_contract
 
 
@@ -29,10 +29,31 @@ Use additional folders such as src/, public/, docs/, or data files when they are
 
 
 def _json_block(payload: dict[str, Any], max_chars: int) -> str:
-    body = json.dumps(sanitize_stage_payload(payload), ensure_ascii=False, indent=2)
+    body = json.dumps(sanitize_stage_value(payload), ensure_ascii=False, indent=2)
     if len(body) > max_chars:
         return compact_text(body, max_chars=max_chars)
     return body
+
+
+def _plan_lines(architect_plan: dict[str, Any] | None, plan_artifact: dict[str, Any] | None, max_chars: int) -> str:
+    items: list[str] = []
+    if architect_plan:
+        if architect_plan.get("summary"):
+            items.append(f"Architect summary: {architect_plan.get('summary')}")
+        items.extend(str(item) for item in architect_plan.get("execution_plan", []) or [])
+        if architect_plan.get("opencode_instruction"):
+            items.append(str(architect_plan["opencode_instruction"]))
+    if plan_artifact:
+        if plan_artifact.get("summary"):
+            items.append(f"Plan summary: {plan_artifact.get('summary')}")
+        items.extend(str(item) for item in plan_artifact.get("implementation_steps", []) or [])
+    return compact_text(_list_lines(items) if items else "- Follow the Task Contract.", max_chars=max_chars)
+
+
+def _limit_prompt(prompt: str, max_chars: int) -> str:
+    if len(prompt) <= max_chars:
+        return prompt
+    return compact_text(prompt, max_chars=max_chars)
 
 
 def build_initial_prompt(
@@ -44,8 +65,10 @@ def build_initial_prompt(
     task_contract: dict[str, Any] | None = None,
     repo_summary: dict[str, Any] | None = None,
 ) -> str:
-    section_max_chars = int((project_config.get("prompt_limits", {}) or {}).get("section_max_chars", 2500))
-    repo_facts = repo_fact_summary_from_explore(repo_summary or explore_result or {}, max_chars=section_max_chars)
+    limits = project_config.get("prompt_limits", {}) or {}
+    section_max_chars = int(limits.get("section_max_chars", 1800))
+    build_max_chars = int(limits.get("build_max_chars", 6000))
+    repo_facts = repo_facts_from_artifact(repo_summary or explore_result or {}, max_chars=section_max_chars)
     contract = compact_task_contract(
         task_contract
         or build_task_contract(
@@ -59,44 +82,39 @@ def build_initial_prompt(
     denied_paths = _list_lines(contract.get("denied_paths") or project_config.get("denied_paths", []))
     validation_commands = contract.get("validation_commands", [])
     validation_lines = _list_lines(validation_commands) if validation_commands else project_config.get("test_command", "")
+    implementation_plan = _plan_lines(plan_result, opencode_plan, section_max_chars)
 
-    legacy_plan_note = ""
-    if plan_result:
-        legacy_plan_note += "\n[Architect Plan]\nIncluded in the Task Contract acceptance criteria.\n"
-    if opencode_plan:
-        legacy_plan_note += "\n[OpenCode Plan Summary]\nIncluded in the Task Contract acceptance criteria.\n"
-
-    return f"""You are the OpenCode build execution agent. Complete the task in the current repository.
+    prompt = f"""You are the OpenCode build execution agent. Complete the task in the current repository.
 
 [Task Goal]
-{task_text}
+{compact_text(task_text, 1000)}
 
 [Task Contract]
-{_json_block(contract, max(section_max_chars, 1200))}
+{_json_block(contract, min(max(section_max_chars, 1200), 2200))}
 
-[Repository Fact Summary]
+[Repository Facts]
 {_json_block(repo_facts, section_max_chars)}
 
-[OpenCode Explore Summary]
-This section is intentionally limited to the repository fact summary above.
-{legacy_plan_note}
-{_real_project_requirement()}
-[Execution Constraints]
-1. Read the relevant code before editing.
-2. Create or modify any project files needed inside the current repository/work directory to fully complete the task.
-3. Avoid broad unrelated refactors.
-4. Never modify these denied paths:
-{denied_paths}
-5. Do not delete, skip, weaken, or bypass tests to make validation pass.
-6. Do not introduce TODO, FIXME, HACK, debugger, console.log, secrets, or hardcoded credentials.
-7. After editing, run the configured validation command:
-{validation_lines or "no test command configured"}
-8. If validation fails, use the logs to fix the root cause.
-9. At the end, briefly report changed files, rationale, and validation result.
+[Implementation Plan]
+{implementation_plan}
 
-[Output Requirement]
-Keep the final response concise and factual.
+{_real_project_requirement()}
+
+[Execution Rules]
+- Read the relevant code before editing.
+- Create or modify the files needed inside the current repository to fully complete the task.
+- Do not modify denied paths:
+{denied_paths}
+- Do not only write README to satisfy a real project creation task.
+- Do not delete, skip, weaken, or bypass tests.
+- Do not introduce TODO, FIXME, HACK, debugger, console.log, secrets, or hardcoded credentials.
+- Run the configured validation command:
+{validation_lines or "no test command configured"}
+- If validation fails, use the logs to fix the root cause.
+- At the end, briefly report changed files and validation result.
+
 Start now."""
+    return _limit_prompt(prompt, build_max_chars)
 
 
 def build_retry_prompt(
@@ -108,6 +126,7 @@ def build_retry_prompt(
     validator_result: dict[str, Any] | None = None,
     task_contract: dict[str, Any] | None = None,
 ) -> str:
+    limits = {"retry_max_chars": 4000, "section_max_chars": 1800}
     test = quality_result.get("test", {}) or {}
     lint = quality_result.get("lint", {}) or {}
     blocking = review_result.get("blocking_issues", []) or []
@@ -124,8 +143,10 @@ def build_retry_prompt(
     )
 
     failed_acceptance_items: list[str] = []
-    if not quality_result.get("changed_files"):
-        failed_acceptance_items.append("No changed files were detected.")
+    for item in (validator_result or {}).get("criteria_results", []) or []:
+        if isinstance(item, dict) and item.get("passed") is False:
+            failed_acceptance_items.append(str(item.get("criterion", "")))
+    failed_acceptance_items.extend(str(item) for item in (validator_result or {}).get("missing_files", []) or [])
     if test.get("passed") is False:
         failed_acceptance_items.append("Configured test command did not pass.")
     if lint.get("passed") is False:
@@ -133,59 +154,52 @@ def build_retry_prompt(
     failed_acceptance_items.extend(str(item) for item in validator_blocking)
     failed_acceptance_items.extend(str(item) for item in blocking)
 
-    test_failure_summary = {
-        "test_command": test.get("cmd", ""),
-        "test_passed": test.get("passed"),
-        "test_stdout_tail": str(test.get("stdout", ""))[-2000:],
-        "test_stderr_tail": str(test.get("stderr", ""))[-2000:],
-        "lint_command": lint.get("cmd", ""),
-        "lint_passed": lint.get("passed"),
-        "lint_stdout_tail": str(lint.get("stdout", ""))[-1200:],
-        "lint_stderr_tail": str(lint.get("stderr", ""))[-1200:],
-        "tester_failure_type": (tester_analysis or {}).get("failure_type", ""),
-        "tester_root_cause": (tester_analysis or {}).get("root_cause_summary", ""),
+    quality_summary = {
+        "changed_files": quality_result.get("changed_files", []),
+        "quality_passed": quality_result.get("passed"),
+        "test": {
+            "cmd": test.get("cmd", ""),
+            "passed": test.get("passed"),
+            "stdout_tail": compact_text(str(test.get("stdout", "")), 700),
+            "stderr_tail": compact_text(str(test.get("stderr", "")), 700),
+        },
+        "lint": {
+            "cmd": lint.get("cmd", ""),
+            "passed": lint.get("passed"),
+            "stdout_tail": compact_text(str(lint.get("stdout", "")), 500),
+            "stderr_tail": compact_text(str(lint.get("stderr", "")), 500),
+        },
     }
 
-    return f"""You are the OpenCode build execution agent. The previous attempt did not pass validation.
+    prompt = f"""You are the OpenCode build execution agent. The previous attempt did not pass validation.
 
 [Original Task]
-{task_text}
+{compact_text(task_text, 900)}
 
 [Task Contract]
-{json.dumps(contract, ensure_ascii=False, indent=2)}
-
-[Retry Iteration]
-{iteration}
+{_json_block(contract, 1500)}
 
 [Failed Acceptance Items]
-{json.dumps(failed_acceptance_items, ensure_ascii=False, indent=2)}
+{_json_block({"items": failed_acceptance_items}, 900)}
 
-[Test Failure Summary]
-{json.dumps(test_failure_summary, ensure_ascii=False, indent=2)}
+[Quality Gate Summary]
+{_json_block(quality_summary, 1200)}
 
-[Tester Analyst]
-{json.dumps({
-    "failure_type": (tester_analysis or {}).get("failure_type", ""),
-    "root_cause_summary": (tester_analysis or {}).get("root_cause_summary", ""),
-    "retry_instruction": (tester_analysis or {}).get("retry_instruction", ""),
-}, ensure_ascii=False, indent=2)}
-
-[Validation Reviewer]
-{json.dumps({
-    "blocking_issues": validator_blocking,
-    "retry_instruction": (validator_result or {}).get("retry_instruction", ""),
-}, ensure_ascii=False, indent=2)}
-
-[Reviewer Blocking Issues]
-{json.dumps(blocking, ensure_ascii=False, indent=2)}
+[Validator / Reviewer Blocking Issues]
+{_json_block({
+    "validator_blocking_issues": validator_blocking,
+    "reviewer_blocking_issues": blocking,
+    "tester_root_cause": (tester_analysis or {}).get("root_cause_summary", ""),
+}, 1000)}
 
 [Retry Instruction]
-{retry_instruction}
+{compact_text(retry_instruction, 500)}
 
 [Retry Requirements]
-1. Fix only the listed failure causes.
-2. Do not expand scope or introduce unrelated changes.
-3. You may create or modify needed project files in the current repository, but do not touch denied paths.
-4. Do not skip, delete, or weaken tests.
-5. Rerun validation and report the result.
+- Fix only the listed blocking issues.
+- Do not expand scope or introduce unrelated changes.
+- Do not touch denied paths.
+- Do not skip, delete, or weaken tests.
+- Rerun validation and report the result.
 Continue in the same session."""
+    return _limit_prompt(prompt, limits["retry_max_chars"])
